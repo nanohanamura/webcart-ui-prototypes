@@ -1,119 +1,39 @@
 (() => {
-  const catalog = window.NANOHANA_CATALOG;
-  const theme = document.body.dataset.theme;
-  const configs = {
-    owl: {no:"01", label:"産直アウル参考", title:"条件を先に決める", lead:"絞り込みから迷わず商品へ", layout:"filter", icon:"畑"},
-    daichi: {no:"02", label:"大地を守る会参考", title:"カテゴリーを深く探せる", lead:"品数が増えても分類からたどれる", layout:"dense", icon:"大地"},
-    radish: {no:"03", label:"らでぃっしゅぼーや参考", title:"入口をやさしく整理", lead:"検索・カタログ・カテゴリーを大きく案内", layout:"portal", icon:"らでぃっしゅ"},
-    bio: {no:"04", label:"ビオ・マルシェ参考", title:"カテゴリーを見渡す", lead:"暮らしの品ぞろえを落ち着いて選ぶ", layout:"catalog", icon:"BIO"},
-    slope: {no:"05", label:"坂ノ途中参考", title:"商品を主役にする", lead:"季節感と読みやすい余白で選ぶ", layout:"story", icon:"坂"},
-    kitano: {no:"06", label:"北野エース参考", title:"売場のように素早く探す", lead:"検索・分類・価格を高密度に確認", layout:"market", icon:"北野"}
-  };
-  const cfg = configs[theme] || configs.owl;
-  const groups = [
-    ["fresh","野菜・果物"],["daily","冷蔵・日配品"],["pantry","調味料・主食・飲料"],["snack","お菓子・軽食"],["living","石けん・生活雑貨"]
-  ];
-  let activeCategory = "0";
-  let query = "";
-
-  const esc = (s) => String(s).replace(/[&<>\"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-  const money = (n) => n.toLocaleString("ja-JP");
-  const category = (code) => catalog.categories.find(c => c.code === code) || catalog.categories[0];
-  const icon = (name) => `<span class="ui-icon" aria-hidden="true">${name}</span>`;
-
-  function categoryMarkup() {
-    return groups.map(([key,label]) => `
-      <section class="category-group">
-        <h3>${label}<span>${catalog.categories.filter(c => c.group === key).length}</span></h3>
-        <div class="category-list">
-          ${catalog.categories.filter(c => c.group === key).map(c => `<button type="button" class="category-item ${c.code===activeCategory?'is-active':''}" data-gc-cd="${c.code}" aria-pressed="${c.code===activeCategory}">${esc(c.name)}</button>`).join("")}
-        </div>
-      </section>`).join("");
-  }
-
-  function cardMarkup(p, index) {
-    return `<article class="product-card" data-product-code="${p.code}" data-gc-cd="${p.gcCd}" data-contract-fields="F_Gc_Cd,F_Gs_Cd,F_Name,F_Price,F_Ondo,F_Buy,F_Pg,F_Sum">
-      <div class="product-image-wrap">
-        ${p.badge ? `<span class="product-badge">${p.badge}</span>` : ""}
-        <img class="product-image" src="${p.image}" alt="${esc(p.sourceName)}" width="360" height="270" loading="${index < 4 ? 'eager' : 'lazy'}">
-      </div>
-      <div class="product-copy">
-        <div class="product-meta"><span class="temp temp-${p.temp}">${p.temp}</span><span class="product-code">商品コード ${p.code}</span></div>
-        <h3>${esc(p.name)}</h3>
-        <p class="spec">${esc(p.spec)}</p>
-        <div class="product-action"><p class="price"><small>税込</small> ${money(p.price)}<small>円</small></p><button type="button" class="buy-button" data-buy-code="${p.code}">${cfg.layout === 'dense' ? '購入する' : 'カートへ'}</button></div>
-      </div>
-    </article>`;
-  }
-
-  function headerMarkup() {
-    const search = `<form class="search-form" data-local-search role="search"><label class="sr-only" for="word">商品を検索</label><input id="word" name="word" type="search" value="" placeholder="商品名を入力" autocomplete="off"><button type="submit">${icon("⌕")}<span>検索</span></button></form>`;
-    return `<div class="prototype-ribbon">比較試作 ${cfg.no}　${cfg.label}</div>
-      <header class="site-header">
-        <div class="header-main"><button class="menu-button" type="button" data-category-trigger aria-expanded="false">${icon("☰")}<span>メニュー</span></button><a class="brand" href="index.html" aria-label="比較案一覧へ"><strong>菜の花村</strong><small>自然食品のWebカート</small></a><button class="cart-button" type="button" data-cart>${icon("かご")}<span>カート</span><b>0</b></button></div>
-        ${search}
-        <nav class="quick-nav" aria-label="商品ナビ"><button type="button" data-scroll-products>商品一覧</button><button type="button" data-category-trigger>カテゴリー</button><button type="button" data-toast="ログイン機能には接続していません">ログイン</button></nav>
-      </header>`;
-  }
-
-  function introMarkup() {
-    const popular = catalog.categories.slice(0,7).map(c=>`<button type="button" data-gc-cd="${c.code}" class="chip ${c.code===activeCategory?'is-active':''}">${esc(c.name)}</button>`).join("");
-    if (cfg.layout === "portal") return `<section class="portal-hero"><p class="eyebrow">商品を探す</p><h1>${cfg.title}</h1><p>${cfg.lead}</p><div class="portal-actions"><button data-category-trigger type="button">${icon("畑")}カテゴリー</button><button data-focus-search type="button">${icon("⌕")}商品検索</button><button data-scroll-products type="button">${icon("新")}新着商品</button></div></section><div class="popular-chips">${popular}</div>`;
-    if (cfg.layout === "catalog") return `<section class="catalog-hero"><p class="eyebrow">ORGANIC & DAILY GOODS</p><h1>菜の花村の商品</h1><p>${cfg.lead}</p><div class="category-preview">${popular}</div><button class="wide-category" data-category-trigger type="button">全53カテゴリーを見る <span>→</span></button></section>`;
-    if (cfg.layout === "story") return `<section class="story-hero"><p class="eyebrow">季節のおすすめ</p><h1>土の香りがする、<br>いつもの野菜。</h1><p>${cfg.lead}</p><a href="#products" class="text-link">商品を見る <span>↓</span></a></section><div class="popular-chips">${popular}</div>`;
-    if (cfg.layout === "market") return `<section class="market-tools"><h1>${cfg.title}</h1><div class="market-links"><button data-category-trigger type="button">カテゴリから探す</button><button data-scroll-products type="button">新商品</button><button data-scroll-products type="button">価格で見る</button></div><div class="popular-chips">${popular}</div></section>`;
-    if (cfg.layout === "dense") return `<section class="dense-tools"><div><p class="eyebrow">今週のお買い物</p><h1>${cfg.title}</h1></div><button data-category-trigger type="button">カテゴリーから探す <span>53</span></button><div class="popular-chips">${popular}</div></section>`;
-    return `<section class="filter-hero"><p class="eyebrow">商品一覧</p><h1>${cfg.title}</h1><p>${cfg.lead}</p><div class="filter-actions"><button data-category-trigger type="button">カテゴリー <b>53</b></button><button data-focus-search type="button">キーワード検索</button></div><div class="popular-chips">${popular}</div></section>`;
-  }
-
-  function render() {
-    document.title = `${cfg.no} ${cfg.label}｜菜の花村UI比較試作`;
-    document.querySelector("#app").innerHTML = `${headerMarkup()}<main>${introMarkup()}
-      <section class="selection-bar"><div><small>選択中のカテゴリー</small><strong data-active-category>${esc(category(activeCategory).name)}</strong></div><button type="button" data-category-trigger>変更</button></section>
-      <section class="products-section" id="products"><div class="section-heading"><div><p class="eyebrow">PRODUCTS</p><h2>${esc(category(activeCategory).name)}</h2></div><p><b data-result-count>${catalog.products.length}</b> 商品</p></div><div class="product-grid" data-products></div><div class="empty-state" hidden data-empty>該当する商品はありません。検索語を変えてください。</div></section>
-      <section class="prototype-note"><h2>この画面は比較試作です</h2><p>検索・カテゴリー・カートボタンは画面内だけで動きます。本番フォーム、ログイン、注文、NILE、DBには接続していません。</p></section>
-    </main>
-    <aside class="category-panel" data-category-panel aria-hidden="true"><div class="panel-head"><div><small>全53カテゴリー</small><h2>カテゴリーから探す</h2></div><button type="button" data-category-close aria-label="カテゴリーを閉じる">×</button></div><div class="panel-scroll" data-category-content>${categoryMarkup()}</div></aside><div class="scrim" data-scrim></div><div class="toast" role="status" aria-live="polite" data-toast-box></div>
-    <nav class="bottom-nav" aria-label="スマートフォン用ナビ"><button type="button" data-focus-search>${icon("⌕")}<span>検索</span></button><button type="button" data-category-trigger>${icon("分類")}<span>カテゴリー</span></button><button type="button" data-scroll-products>${icon("品")}<span>商品</span></button><button type="button" data-cart>${icon("かご")}<span>カート</span><b>0</b></button></nav>`;
-    bind(); renderProducts();
-  }
-
-  function renderProducts() {
-    const normalized = query.trim().toLowerCase();
-    const list = catalog.products.filter(p => !normalized || `${p.name} ${p.spec} ${p.sourceName} ${p.code}`.toLowerCase().includes(normalized));
-    document.querySelector("[data-products]").innerHTML = list.map(cardMarkup).join("");
-    document.querySelector("[data-result-count]").textContent = list.length;
-    document.querySelector("[data-empty]").hidden = list.length !== 0;
-    document.querySelectorAll("[data-buy-code]").forEach(b=>b.addEventListener("click",()=>toast("比較試作のため、カートには入りません")));
-  }
-
-  function panel(open) {
-    document.querySelector("[data-category-panel]").classList.toggle("is-open",open);
-    document.querySelector("[data-scrim]").classList.toggle("is-open",open);
-    document.querySelector("[data-category-panel]").setAttribute("aria-hidden",String(!open));
-    document.querySelectorAll("[data-category-trigger]").forEach(b=>b.setAttribute("aria-expanded",String(open)));
-    document.body.classList.toggle("panel-open",open);
-  }
-  function toast(message) { const box=document.querySelector("[data-toast-box]"); box.textContent=message; box.classList.add("is-visible"); clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>box.classList.remove("is-visible"),3200); }
-  function selectCategory(code) {
-    activeCategory=code;
-    document.querySelectorAll("[data-active-category]").forEach(e=>e.textContent=category(code).name);
-    document.querySelector(".products-section h2").textContent=category(code).name;
-    document.querySelectorAll("[data-gc-cd]").forEach(b=>b.classList.toggle("is-active",b.dataset.gcCd===code));
-    panel(false);
-    if(code!=="0") toast("カテゴリー導線の比較用です。商品12件は「無農薬野菜」のまま表示します");
-    document.querySelector("#products").scrollIntoView({behavior:"smooth",block:"start"});
-  }
-  function bind() {
-    document.querySelectorAll("[data-category-trigger]").forEach(b=>b.addEventListener("click",()=>panel(true)));
-    document.querySelector("[data-category-close]").addEventListener("click",()=>panel(false));
-    document.querySelector("[data-scrim]").addEventListener("click",()=>panel(false));
-    document.querySelectorAll("[data-gc-cd]").forEach(b=>b.addEventListener("click",()=>selectCategory(b.dataset.gcCd)));
-    document.querySelectorAll("[data-focus-search]").forEach(b=>b.addEventListener("click",()=>{document.querySelector("#word").focus();scrollTo({top:0,behavior:"smooth"});}));
-    document.querySelectorAll("[data-scroll-products]").forEach(b=>b.addEventListener("click",()=>document.querySelector("#products").scrollIntoView({behavior:"smooth"})));
-    document.querySelectorAll("[data-cart]").forEach(b=>b.addEventListener("click",()=>toast("比較試作のため、実際のカートには接続していません")));
-    document.querySelectorAll("[data-toast]").forEach(b=>b.addEventListener("click",()=>toast(b.dataset.toast)));
-    const form=document.querySelector("[data-local-search]"); form.addEventListener("submit",e=>{e.preventDefault();query=form.word.value;renderProducts();document.querySelector("#products").scrollIntoView({behavior:"smooth"});toast(query?`「${query}」で試作内を検索しました`:"全商品を表示します");});
-  }
-  render();
+  const C = window.NANOHANA_CATALOG;
+  const key = document.body.dataset.theme;
+  const groups = [["fresh","野菜・果物"],["daily","冷蔵・日配品"],["pantry","調味料・主食・飲料"],["snack","お菓子・軽食"],["living","石けん・生活雑貨"]];
+  const config = {
+    owl:{no:"01",ref:"産直アウル",kind:"filter",title:"食材・商品一覧"},
+    daichi:{no:"02",ref:"大地を守る会",kind:"tree",title:"カテゴリーから探す"},
+    radish:{no:"03",ref:"らでぃっしゅぼーや",kind:"portal",title:"商品を探す"},
+    bio:{no:"04",ref:"ビオ・マルシェ",kind:"catalog",title:"菜の花村の商品"},
+    slope:{no:"05",ref:"坂ノ途中",kind:"editorial",title:"今週のおすすめ"},
+    kitano:{no:"06",ref:"北野エース",kind:"market",title:"商品カテゴリ"}
+  }[key];
+  let active="0", query="";
+  const esc=s=>String(s).replace(/[&<>\"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const cat=code=>C.categories.find(x=>x.code===code)||C.categories[0];
+  const products=()=>C.products.filter(p=>!query||`${p.name} ${p.spec} ${p.code}`.toLowerCase().includes(query.toLowerCase()));
+  const mark=(p,i,variant="grid")=>`<article class="product ${variant}" data-product-code="${p.code}" data-gc-cd="${p.gcCd}"><img src="${p.image}" alt="${esc(p.sourceName)}" width="360" height="270" loading="${i<4?'eager':'lazy'}"><div>${p.badge?`<small class="badge">${p.badge}</small>`:""}<h3>${esc(p.name)}</h3><p>${esc(p.spec)}</p><strong>税込 ${p.price.toLocaleString("ja-JP")}円</strong><small>${p.temp}・商品コード ${p.code}</small><button type="button" data-buy="${p.code}">カートへ</button></div></article>`;
+  const categoryRows=(mode="plain")=>groups.map(([g,label])=>`<section class="category-group ${mode}"><h3>${label}<span>${C.categories.filter(x=>x.group===g).length}</span></h3><div>${C.categories.filter(x=>x.group===g).map(x=>`<button type="button" data-category="${x.code}" class="${active===x.code?'selected':''}">${esc(x.name)}<i>›</i></button>`).join("")}</div></section>`).join("");
+  const search=(label="商品名、商品コードで検索")=>`<form class="search" data-search><label><span class="sr">${label}</span><input name="word" type="search" placeholder="${label}"></label><button>検索</button></form>`;
+  const note=`<p class="safety">比較試作：本番フォーム・ログイン・カート・注文・NILE・DBには接続しません。</p>`;
+  function shell(inner){return `<div class="trial">比較試作 ${config.no}｜${config.ref}参考の構造</div>${inner}<div class="toast" role="status" aria-live="polite"></div>`}
+  function owl(){return shell(`<header class="owl-head"><a href="index.html" class="wordmark">菜の花村</a>${search("商品をさがす")}<nav><a>新着</a><a>ランキング</a><a>訳あり</a><button data-open-filter>条件で絞り込む</button></nav></header><main class="owl-main"><p class="crumb">菜の花村（自然食品）</p><h1>食材・商品一覧</h1><p class="intro">菜の花村の商品を条件から探す比較画面です。</p><div class="result-head"><b>${C.products.length}件</b><select aria-label="並び順"><option>新着順</option><option>価格が低い順</option></select></div><div class="owl-products">${products().map((p,i)=>mark(p,i,"owl-card")).join("")}</div></main><aside class="filter-sheet" aria-hidden="true"><header><b>条件で絞り込む</b><button data-close>閉じる</button></header><h2>カテゴリー</h2>${categoryRows("select-list")}<h2>温度帯</h2><label><input type="checkbox"> 常温</label><label><input type="checkbox"> 冷蔵</label></aside><div class="veil"></div>${note}`)}
+  function daichi(){return shell(`<header class="daichi-head"><button class="hamb">カテゴリ</button><a href="index.html">菜の花村<br><small>お買い物サイト</small></a></header><main class="daichi-main">${search()}<label class="week"><input type="checkbox"> 今週取扱いのない商品を含む</label><h1>カテゴリーから探す</h1><p class="section-label">食品</p>${categoryRows("deep-tree")}<p class="section-label">日用品</p>${categoryRows("deep-tree living-only")}<section class="after-tree"><h2>無農薬野菜</h2><div class="one-column">${products().map((p,i)=>mark(p,i,"daichi-card")).join("")}</div></section></main>${note}`)}
+  function radish(){return shell(`<header class="radish-head"><a href="index.html">菜の花村</a><span>ゲストさま</span><button>ログイン</button><button>サポート</button></header><main class="radish-main"><section class="radish-hero"><h1>商品を探す</h1><p>商品検索、カタログ、カテゴリーから選べます。</p>${search("商品検索")}</section><section><h2>デジタルカタログ</h2><div class="catalog-links"><button>今週のカタログ</button><button>次週のカタログ</button></div></section><section><h2>特別カテゴリ</h2><div class="special-links"><button>野菜セット</button><button>新商品</button><button>お買い得</button></div></section><section class="radish-category"><h2>食品カテゴリ一覧</h2>${categoryRows("portal-list")}</section><section class="radish-category"><h2>日用品カテゴリ一覧</h2>${categoryRows("portal-list")}</section><section class="radish-results"><h2>無農薬野菜</h2><div>${products().map((p,i)=>mark(p,i,"radish-card")).join("")}</div></section></main>${note}`)}
+  function bio(){return shell(`<header class="bio-head"><a href="index.html">菜の花村</a><button>メニュー</button><nav>菜の花村の想い　宅配サービス　読みもの　商品　ご利用ガイド</nav></header><main class="bio-main"><p class="crumb">トップページ ＞ 菜の花村の商品</p><h1>菜の花村の商品</h1><p>自然食品と暮らしの品を、カテゴリー別に見渡す比較画面です。</p><nav class="anchor"><a href="#bio-cats">商品カテゴリ</a><a href="#bio-products">商品一覧</a><a>商品へのこだわり</a></nav><section id="bio-cats"><h2>カテゴリ別 商品一覧</h2><p>53カテゴリーを、カード型の目次として並べた場合。</p><div class="bio-cats">${C.categories.map(x=>`<button data-category="${x.code}"><span>商品一覧</span>${esc(x.name)}</button>`).join("")}</div></section><section id="bio-products"><h2>無農薬野菜</h2><div class="bio-products">${products().map((p,i)=>mark(p,i,"bio-card")).join("")}</div></section></main>${note}`)}
+  function slope(){return shell(`<header class="slope-head"><button data-slope-menu>☰<small>メニュー</small></button><a href="index.html">菜の花村<br><small>Online Shop</small></a><nav><button>お気に入り</button><button>ログイン</button><button>カート</button></nav></header><aside class="slope-menu"><button data-close>× 閉じる</button>${search("商品を検索")}<h2>カテゴリー</h2>${categoryRows("slope-list")}</aside><main class="slope-main"><p class="notice-line">重要なお知らせ　この画面は比較試作です</p><div class="feature-rail"><button>新着・おすすめ</button><button>特集</button><button data-slope-menu>カテゴリー</button></div><section class="slope-lead"><p>今日のおすすめ</p><h1>毎日の食卓に、<br>いつもの自然食品。</h1></section><section class="slope-section"><h2>今週のおすすめ</h2><a>もっと見る</a><div class="slope-rail">${products().slice(0,6).map((p,i)=>mark(p,i,"slope-card")).join("")}</div></section><section class="slope-section"><h2>新着商品</h2><a>もっと見る</a><div class="slope-rail">${products().slice(6).map((p,i)=>mark(p,i,"slope-card")).join("")}</div></section></main>${note}`)}
+  function kitano(){return shell(`<header class="kitano-head"><p>税込6,480円以上で送料無料！</p><div><a href="index.html">菜の花村<br><small>WEB SHOP</small></a><button>カテゴリから探す</button><button>特集</button><button>サポート</button></div>${search("キーワードを入力")}<nav><button>ログイン</button><button>マイページ</button><button>お気に入り</button><button>カート</button></nav></header><main class="kitano-main"><section class="quick-category"><h2>商品カテゴリ</h2><div>${C.categories.map(x=>`<button data-category="${x.code}">${esc(x.name)}<i>＋</i></button>`).join("")}</div></section><section class="deal-nav"><button>お買い得</button><button>ランキング</button><button>新商品</button><button>ポイントUP</button></section><section><h2>特集</h2><div class="feature-boxes"><b>無農薬野菜</b><b>自然食品</b><b>暮らしの品</b></div></section><section><h2>ランキング</h2><ol class="ranking">${products().slice(0,5).map((p,i)=>`<li><strong>${i+1}</strong>${esc(p.name)}<em>税込 ${p.price}円</em></li>`).join("")}</ol></section><section class="kitano-products"><h2>新商品</h2><div>${products().map((p,i)=>mark(p,i,"kitano-card")).join("")}</div></section></main>${note}`)}
+  const pages={filter:owl,tree:daichi,portal:radish,catalog:bio,editorial:slope,market:kitano};
+  document.title=`${config.no} ${config.ref}参考｜菜の花村UI比較試作`;
+  document.getElementById("app").innerHTML=pages[config.kind]();
+  const toast=m=>{const e=document.querySelector(".toast");e.textContent=m;e.classList.add("show");setTimeout(()=>e.classList.remove("show"),2600)};
+  document.querySelectorAll("[data-buy]").forEach(b=>b.addEventListener("click",()=>toast("比較試作のため、本番カートには入りません")));
+  document.querySelectorAll("[data-category]").forEach(b=>b.addEventListener("click",()=>{active=b.dataset.category;toast(`「${cat(active).name}」を選ぶ導線の比較です。実商品は無農薬野菜12件のままです。`)}));
+  document.querySelectorAll("[data-search]").forEach(f=>f.addEventListener("submit",e=>{e.preventDefault();query=f.word.value;toast(query?`「${query}」で試作内を検索しました`:"商品を表示します")}));
+  const sheet=document.querySelector(".filter-sheet,.slope-menu"), veil=document.querySelector(".veil");
+  document.querySelectorAll("[data-open-filter],[data-slope-menu]").forEach(b=>b.addEventListener("click",()=>{if(sheet){sheet.classList.add("open");veil?.classList.add("open")}}));
+  document.querySelectorAll("[data-close]").forEach(b=>b.addEventListener("click",()=>{sheet?.classList.remove("open");veil?.classList.remove("open")}));
+  veil?.addEventListener("click",()=>{sheet?.classList.remove("open");veil.classList.remove("open")});
 })();
