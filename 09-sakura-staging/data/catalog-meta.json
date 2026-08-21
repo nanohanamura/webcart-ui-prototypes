@@ -1,0 +1,38 @@
+{
+  "allowed_delflg": [
+    0,
+    1,
+    2
+  ],
+  "category_count": 56,
+  "decode_warning_count": 14,
+  "decode_warnings": [
+    "products[26].SHOSAISETSUMEI",
+    "products[27].SHOSAISETSUMEI",
+    "products[34].SHOSAISETSUMEI",
+    "products[39].SHOSAISETSUMEI",
+    "products[52].SHOSAISETSUMEI",
+    "products[53].SHOSAISETSUMEI",
+    "products[63].SHOSAISETSUMEI",
+    "products[65].SHOSAISETSUMEI",
+    "products[591].SHOSAISETSUMEI",
+    "products[680].SHOSAISETSUMEI",
+    "products[721].SHOSAISETSUMEI",
+    "products[722].SHOSAISETSUMEI",
+    "products[725].SHOSAISETSUMEI",
+    "products[838].SHOSAISETSUMEI"
+  ],
+  "generated_at": "2026-08-21T15:40:25Z",
+  "hidden_null_price_count": 5,
+  "listed_orphan_product_count": 9,
+  "orphan_product_count": 159,
+  "product_count": 916,
+  "schema_version": 2,
+  "synthesized_category_codes": [
+    12,
+    90,
+    99
+  ],
+  "synthesized_category_count": 3,
+  "visibility_contract": "UI displays only products where DELFLG == 0"
+}
