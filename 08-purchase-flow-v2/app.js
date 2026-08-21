@@ -88,11 +88,14 @@
   }
 
   function bottomNav() {
+    const cartActive = page === "cart" ? ' class="is-active" aria-current="page"' : "";
+    const searchActive = page === "catalog" && query ? ' class="is-active" aria-pressed="true"' : ' aria-pressed="false"';
+    const categoryActive = page === "catalog" && !query ? ' class="is-active" aria-pressed="true"' : ' aria-pressed="false"';
     return `<nav class="bottom-nav" aria-label="スマートフォン用メニュー">
-      <a href="index.html">${icons.home}<span>商品</span></a>
-      <button type="button" data-focus-search>${icons.search}<span>検索</span></button>
-      <button type="button" data-category-trigger>${icons.menu}<span>カテゴリ</span></button>
-      <a href="cart.html">${icons.cart}<span>カート</span><b data-cart-count>${cartCount()}</b></a>
+      <a href="${officialHomeUrl}">${icons.home}<span>ホーム</span></a>
+      <button type="button" data-focus-search${searchActive}>${icons.search}<span>検索</span></button>
+      <button type="button" data-category-trigger${categoryActive}>${icons.menu}<span>カテゴリ</span></button>
+      <a href="cart.html"${cartActive}>${icons.cart}<span>カート</span><b data-cart-count>${cartCount()}</b></a>
     </nav>`;
   }
 
@@ -113,12 +116,18 @@
     return `<aside class="category-panel" data-category-panel aria-hidden="true"><div class="panel-head"><div><small>全${catalog.categories.length}カテゴリー</small><h2>カテゴリーから探す</h2></div><button type="button" data-category-close aria-label="カテゴリーを閉じる">×</button></div><label class="category-search">カテゴリー名を検索<input type="search" data-category-search placeholder="例：豆腐、パン"></label><div class="panel-scroll">${sections}</div></aside><div class="scrim" data-scrim></div>`;
   }
 
+  function productQuantityControl(item) {
+    const qty = Number(state.cart[item.code] || 0);
+    if (!qty) return `<button class="add-button" type="button" data-quantity-plus="${item.code}" aria-label="${esc(item.name)}をカートに追加">カートに追加</button>`;
+    return `<div class="quantity-stepper" aria-label="${esc(item.name)}の数量"><button type="button" data-quantity-minus="${item.code}" aria-label="${esc(item.name)}を1点減らす">−</button><strong aria-live="polite">${qty}</strong><button type="button" data-quantity-plus="${item.code}" aria-label="${esc(item.name)}を1点増やす">＋</button></div>`;
+  }
+
   function productCard(item, index) {
-    return `<article class="product-card" data-contract-fields="F_Gc_Cd,F_Gs_Cd,F_Name,F_Price,F_Ondo,F_Buy,F_Pg,F_Sum"><div class="product-image-wrap">${item.badge ? `<span>${esc(item.badge)}</span>` : ""}<a class="product-image-link" href="${productUrl(item)}" aria-label="${esc(item.name)}の詳細を見る"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="360" height="270" loading="${index < 4 ? "eager" : "lazy"}"></a></div><div class="product-copy"><h2><a class="product-name-link" href="${productUrl(item)}">${esc(item.name)}</a></h2><p class="spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><p class="product-meta"><span>${esc(item.temp)}</span><small>商品コード ${esc(item.code)}</small></p><button class="buy-button" type="button" data-buy-code="${item.code}">カートに入れる</button></div></article>`;
+    return `<article class="product-card" data-contract-fields="F_Gc_Cd,F_Gs_Cd,F_Name,F_Price,F_Ondo,F_Buy,F_Pg,F_Sum"><div class="product-image-wrap">${item.badge ? `<span>${esc(item.badge)}</span>` : ""}<a class="product-image-link" href="${productUrl(item)}" aria-label="${esc(item.name)}の詳細を見る"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="120" height="140" loading="${index < 4 ? "eager" : "lazy"}"></a></div><div class="product-copy"><p class="product-meta"><span>${esc(item.temp)}</span><small>商品コード ${esc(item.code)}</small></p><h2><a class="product-name-link" href="${productUrl(item)}">${esc(item.name)}</a></h2><p class="spec">${esc(item.spec)}</p><div class="product-purchase-row"><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p>${productQuantityControl(item)}</div></div></article>`;
   }
 
   function renderCatalog() {
-    document.querySelector("#app").innerHTML = `${header({search:true})}<main class="page-shell catalog-page" id="main" tabindex="-1"><a class="delivery-link" href="delivery-consultation.html"><span>初めて配達をご希望の方</span><strong>配達相談について →</strong></a><section class="category-summary"><div><h1 data-active-category>${esc(category(activeCategory).name)}</h1><p><b data-result-count>0</b>商品</p></div><button type="button" data-category-trigger>カテゴリー変更</button></section><div class="filter-status ${query ? "is-visible" : ""}" data-filter-status>検索中：<strong>${esc(query)}</strong><button type="button" data-clear-search>解除</button></div><section class="products-section" id="products"><div class="product-grid" data-products></div><div class="empty-state" hidden data-empty>該当する商品はありません。</div></section></main>${categoryPanel()}<div class="cart-notice" data-cart-notice role="status" aria-live="polite"><strong>カートに追加しました</strong><span data-added-name></span><div><button type="button" data-continue>買い物を続ける</button><a href="cart.html">カートを見る</a></div></div>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${header({search:true})}<main class="page-shell catalog-page" id="main" tabindex="-1"><a class="delivery-link" href="delivery-consultation.html"><span>初めて配達をご希望の方</span><strong>配達相談について →</strong></a><section class="category-summary"><div><h1 data-active-category>${esc(category(activeCategory).name)}</h1><p><b data-result-count>0</b>商品</p></div><button type="button" data-category-trigger>カテゴリー変更</button></section><div class="filter-status ${query ? "is-visible" : ""}" data-filter-status>検索中：<strong>${esc(query)}</strong><button type="button" data-clear-search>解除</button></div><section class="products-section" id="products"><p class="sr-only" data-quantity-status aria-live="polite"></p><div class="product-grid" data-products></div><div class="empty-state" hidden data-empty>該当する商品はありません。</div></section></main>${categoryPanel()}<div class="cart-notice" data-cart-notice role="status" aria-live="polite"><strong>カートに追加しました</strong><span data-added-name></span><div><button type="button" data-continue>買い物を続ける</button><a href="cart.html">カートを見る</a></div></div>${bottomNav()}`;
     renderProducts(); bindCommon(); bindCatalog();
   }
 
@@ -126,10 +135,10 @@
     const code = new URLSearchParams(location.search).get("code") || "";
     const item = product(code);
     if (!item) {
-      document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html">← 商品一覧へ戻る</a><section class="empty-card"><h1>商品が見つかりません</h1><a class="primary-button" href="index.html">商品一覧へ</a></section></main>${bottomNav()}`;
+      document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html">← 商品一覧へ戻る</a><section class="empty-card"><h1>商品が見つかりません</h1><a class="secondary-button" href="index.html">商品一覧へ</a></section></main>${bottomNav()}`;
       bindCommon(); return;
     }
-    document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html?gc_cd=${encodeURIComponent(item.gcCd)}#products">← 商品一覧へ戻る</a><article class="product-detail"><div class="product-detail-image"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="720" height="540"></div><div class="product-detail-copy"><p class="product-detail-temp">${esc(item.temp)}</p><h1>${esc(item.name)}</h1><p class="product-detail-spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><p class="product-detail-code">商品コード ${esc(item.code)}</p><button class="primary-button" type="button" data-detail-buy="${item.code}">カートに入れる</button><a class="secondary-button" href="cart.html">カートを見る</a><p class="muted">比較用試作の商品詳細です。本番の注文は送信されません。</p></div></article></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html?gc_cd=${encodeURIComponent(item.gcCd)}#products">← 商品一覧へ戻る</a><article class="product-detail"><div class="product-detail-image"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="720" height="540"></div><div class="product-detail-copy"><p class="product-detail-temp">${esc(item.temp)}</p><h1>${esc(item.name)}</h1><p class="product-detail-spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><p class="product-detail-code">商品コード ${esc(item.code)}</p><button class="primary-button purchase-cta" type="button" data-detail-buy="${item.code}">カートに入れる</button><a class="secondary-button" href="cart.html">カートを見る</a><p class="muted">比較用試作の商品詳細です。本番の注文は送信されません。</p></div></article></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-detail-buy]").addEventListener("click", () => { state.cart[item.code] = (state.cart[item.code] || 0) + 1; save(); updateCartCounts(); });
   }
@@ -140,7 +149,24 @@
     document.querySelector("[data-products]").innerHTML = items.map(productCard).join("");
     document.querySelector("[data-result-count]").textContent = items.length;
     document.querySelector("[data-empty]").hidden = items.length > 0;
-    document.querySelectorAll("[data-buy-code]").forEach((button) => button.addEventListener("click", () => addToCart(button.dataset.buyCode)));
+    document.querySelectorAll("[data-quantity-plus]").forEach((button) => button.addEventListener("click", () => changeProductQuantity(button.dataset.quantityPlus, 1)));
+    document.querySelectorAll("[data-quantity-minus]").forEach((button) => button.addEventListener("click", () => changeProductQuantity(button.dataset.quantityMinus, -1)));
+  }
+
+  function nextProductQuantity(current, delta) { return Math.max(0, Number(current || 0) + delta); }
+
+  function changeProductQuantity(code, delta) {
+    const next = nextProductQuantity(state.cart[code], delta);
+    if (next === 0) delete state.cart[code]; else state.cart[code] = next;
+    save(); updateCartCounts(); renderProducts();
+    const changedItem = product(code);
+    document.querySelector("[data-quantity-status]").textContent = `${changedItem.name}の数量を${next}点に変更しました`;
+    document.querySelector(next === 0 ? `[data-quantity-plus="${code}"]` : delta < 0 ? `[data-quantity-minus="${code}"]` : `[data-quantity-plus="${code}"]`)?.focus();
+    if (delta > 0) {
+      const notice = document.querySelector("[data-cart-notice]");
+      notice.querySelector("[data-added-name]").textContent = `${product(code).name}・合計${cartCount()}点`;
+      notice.classList.add("is-visible");
+    }
   }
 
   function addToCart(code) {
@@ -152,7 +178,7 @@
 
   function renderCart() {
     const items = cartItems();
-    document.querySelector("#app").innerHTML = `${flowIntro("カート", "商品、数量、合計をご確認ください。", "index.html", "買い物を続ける")}${items.length ? `<div class="checkout-layout"><div class="cart-list">${items.map(({item, qty}) => `<article class="cart-row"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}"><div><h2>${esc(item.name)}</h2><p>${esc(item.spec)}・${esc(item.temp)}</p><p>単価 ${money(item.price)}円</p><div class="qty-controls"><button type="button" data-minus="${item.code}" aria-label="1点減らす">−</button><strong>${qty}</strong><button type="button" data-plus="${item.code}" aria-label="1点増やす">＋</button><button class="remove" type="button" data-remove="${item.code}">削除</button></div></div><b class="subtotal">${money(item.price * qty)}円</b></article>`).join("")}</div><aside class="order-summary"><h2>ご注文金額</h2><p><span>商品点数</span><strong>${cartCount()}点</strong></p><p class="total"><span>合計</span><strong>${money(cartTotal())}円</strong></p><a class="primary-button" href="customer-entry.html">購入手続きへ進む</a><a class="secondary-button" href="index.html">買い物を続ける</a></aside></div>` : `<section class="empty-card"><div class="empty-cart-icon">${icons.cart}</div><h2>カートは空です</h2><p>商品一覧から商品を選んでください。</p><a class="primary-button" href="index.html">商品一覧へ</a></section>`}</main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("カート", "商品、数量、合計をご確認ください。", "index.html", "買い物を続ける")}${items.length ? `<div class="checkout-layout"><div class="cart-list">${items.map(({item, qty}) => `<article class="cart-row"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}"><div><h2>${esc(item.name)}</h2><p>${esc(item.spec)}・${esc(item.temp)}</p><p>単価 ${money(item.price)}円</p><div class="qty-controls"><button type="button" data-minus="${item.code}" aria-label="1点減らす">−</button><strong>${qty}</strong><button type="button" data-plus="${item.code}" aria-label="1点増やす">＋</button><button class="remove" type="button" data-remove="${item.code}">削除</button></div></div><b class="subtotal">${money(item.price * qty)}円</b></article>`).join("")}</div><aside class="order-summary"><h2>ご注文金額</h2><p><span>商品点数</span><strong>${cartCount()}点</strong></p><p class="total"><span>合計</span><strong>${money(cartTotal())}円</strong></p><a class="primary-button purchase-cta" href="customer-entry.html">購入手続きへ進む</a><a class="secondary-button" href="index.html">買い物を続ける</a></aside></div>` : `<section class="empty-card"><div class="empty-cart-icon">${icons.cart}</div><h2>カートは空です</h2><p>商品一覧から商品を選んでください。</p><a class="secondary-button" href="index.html">商品一覧へ</a></section>`}</main>${bottomNav()}`;
     bindCommon();
     document.querySelectorAll("[data-plus]").forEach((button) => button.addEventListener("click", () => changeQty(button.dataset.plus, 1)));
     document.querySelectorAll("[data-minus]").forEach((button) => button.addEventListener("click", () => changeQty(button.dataset.minus, -1)));
@@ -163,13 +189,13 @@
   function removeItem(code) { delete state.cart[code]; save(); renderCart(); }
 
   function renderCustomerEntry() {
-    document.querySelector("#app").innerHTML = `${flowIntro("ご利用方法を選んでください", "", "cart.html", "カートへ戻る")}<div class="entry-layout"><section class="choice-card is-primary"><h2>Web会員CDをお持ちの方</h2><a class="primary-button" href="login.html">ログインして進む</a></section><section class="choice-card"><h2>初めてご注文する方</h2><div class="entry-actions"><a class="primary-button" href="customer-info.html" data-mode="new-shipping">一般発送で注文する</a><a class="secondary-button" href="delivery-consultation.html">初めて配達をご希望の方</a></div></section></div></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("ご利用方法を選んでください", "", "cart.html", "カートへ戻る")}<div class="entry-layout"><section class="choice-card is-primary"><h2>Web会員CDをお持ちの方</h2><a class="secondary-button choice-action" href="login.html">ログインして進む</a></section><section class="choice-card"><h2>初めてご注文する方</h2><div class="entry-actions"><a class="secondary-button choice-action" href="customer-info.html" data-mode="new-shipping">一般発送で注文する</a><a class="secondary-button" href="delivery-consultation.html">初めて配達をご希望の方</a></div></section></div></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-mode='new-shipping']").addEventListener("click", () => { state.customerMode = "new-shipping"; state.loggedIn = false; save(); });
   }
 
   function renderLogin() {
-    document.querySelector("#app").innerHTML = `${flowIntro("Web会員ログイン", "メールアドレスまたはWeb会員CDと、暗証番号を入力してください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="form-card narrow"><form data-login-form novalidate><label>メールアドレスまたはWeb会員CD<input name="loginId" autocomplete="username" value="prototype-member@example.invalid"></label><label>暗証番号<input name="pin" type="password" inputmode="numeric" value="1234"></label><p class="login-help">暗証番号をお忘れの方は、菜の花村へお問い合わせください。</p><fieldset class="prototype-switch"><legend>試作で確認する登録状態</legend><label><input type="radio" name="mode" value="existing-shipping" checked> 一般発送の登録済み会員</label><label><input type="radio" name="mode" value="existing-delivery"> 定期配達の登録済み会員</label><small>本番ではログイン後の登録情報から自動判定する想定です。</small></fieldset><p class="form-error" data-error role="alert">入力内容をご確認ください。</p><button class="primary-button" type="submit">登録情報を確認して進む</button></form><a class="text-link" href="customer-entry.html">初めてご注文する方はこちら</a></section></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("Web会員ログイン", "メールアドレスまたはWeb会員CDと、暗証番号を入力してください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="form-card narrow"><form data-login-form novalidate><label>メールアドレスまたはWeb会員CD<input name="loginId" autocomplete="username" value="prototype-member@example.invalid"></label><label>暗証番号<input name="pin" type="password" inputmode="numeric" value="1234"></label><p class="login-help">暗証番号をお忘れの方は、菜の花村へお問い合わせください。</p><fieldset class="prototype-switch"><legend>試作で確認する登録状態</legend><label><input type="radio" name="mode" value="existing-shipping" checked> 一般発送の登録済み会員</label><label><input type="radio" name="mode" value="existing-delivery"> 定期配達の登録済み会員</label><small>本番ではログイン後の登録情報から自動判定する想定です。</small></fieldset><p class="form-error" data-error role="alert">入力内容をご確認ください。</p><button class="primary-button purchase-cta" type="submit">登録情報を確認して進む</button></form><a class="text-link" href="customer-entry.html">初めてご注文する方はこちら</a></section></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-login-form]").addEventListener("submit", (event) => {
       event.preventDefault(); const data = new FormData(event.currentTarget);
@@ -183,7 +209,7 @@
   function renderCustomerInfo() {
     state.customerMode = "new-shipping"; save();
     const c = state.customer;
-    document.querySelector("#app").innerHTML = `${flowIntro("注文者情報", "一般発送に必要な情報をご入力ください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="form-card"><div class="section-title"><span>一般発送</span><h2>ご注文者様の情報</h2></div><form class="customer-form" data-customer-form novalidate>${field("name","氏名",c.name,"autocomplete='name'")}${field("postal","郵便番号",c.postal,"inputmode='numeric' autocomplete='postal-code'")}${field("address1","住所1",c.address1,"autocomplete='address-line1'")}${field("address2","住所2（建物名など）",c.address2,"autocomplete='address-line2'")}${field("phone","電話番号",c.phone,"inputmode='tel' autocomplete='tel'")}${field("email","メールアドレス",c.email,"type='email' autocomplete='email'")}${field("pin","暗証番号","1234","type='password' inputmode='numeric'")}${field("pinConfirm","暗証番号（確認）","1234","type='password' inputmode='numeric'")}<p class="form-error wide" data-error role="alert">必須項目と暗証番号をご確認ください。</p><button class="primary-button wide" type="submit">お届け情報へ進む</button></form></section></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("注文者情報", "一般発送に必要な情報をご入力ください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="form-card"><div class="section-title"><span>一般発送</span><h2>ご注文者様の情報</h2></div><form class="customer-form" data-customer-form novalidate>${field("name","氏名",c.name,"autocomplete='name'")}${field("postal","郵便番号",c.postal,"inputmode='numeric' autocomplete='postal-code'")}${field("address1","住所1",c.address1,"autocomplete='address-line1'")}${field("address2","住所2（建物名など）",c.address2,"autocomplete='address-line2'")}${field("phone","電話番号",c.phone,"inputmode='tel' autocomplete='tel'")}${field("email","メールアドレス",c.email,"type='email' autocomplete='email'")}${field("pin","暗証番号","1234","type='password' inputmode='numeric'")}${field("pinConfirm","暗証番号（確認）","1234","type='password' inputmode='numeric'")}<p class="form-error wide" data-error role="alert">必須項目と暗証番号をご確認ください。</p><button class="primary-button purchase-cta wide" type="submit">お届け情報へ進む</button></form></section></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-customer-form]").addEventListener("submit", (event) => {
       event.preventDefault(); const data = new FormData(event.currentTarget); const required = ["name","postal","address1","phone","email","pin","pinConfirm"];
@@ -198,7 +224,7 @@
   function renderDeliveryInfo() {
     if (!state.customerMode) { location.href = "customer-entry.html"; return; }
     const isDelivery = state.customerMode === "existing-delivery";
-    document.querySelector("#app").innerHTML = `${flowIntro("お届け情報", "登録内容とお届け方法をご確認ください。", state.customerMode === "new-shipping" ? "customer-info.html" : "login.html", "前の画面へ戻る")}<div class="two-column"><section class="content-card"><div class="delivery-type"><small>お届け方法</small><strong>${deliveryName()}</strong></div>${customerDetails()}</section><section class="content-card"><h2>${isDelivery ? "定期配達について" : "お届け先"}</h2>${isDelivery ? `<p>登録済みの配達曜日と住所でお届けする想定です。</p><div class="notice"><strong>曜日や住所を変更したい場合</strong><p>配達コースの確認が必要なため、店舗へご相談ください。</p></div>` : `<label class="check-row"><input type="checkbox" data-separate ${state.separateDestination ? "checked" : ""}> 注文者と別の住所へ送る</label><div class="separate-box ${state.separateDestination ? "is-visible" : ""}" data-separate-box><p>試作では別住所入力欄の開閉だけを確認します。</p>${field("destination","別のお届け先","テストお届け先")}</div><p class="muted">一般発送用のお届け区分コードは、現在のDBマスタ確認後に既存値へ対応させます。</p>`}</section></div><div class="actions"><a class="secondary-button" href="${state.customerMode === "new-shipping" ? "customer-info.html" : "login.html"}">戻る</a><a class="primary-button" href="confirm.html">注文内容の確認へ</a></div></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("お届け情報", "登録内容とお届け方法をご確認ください。", state.customerMode === "new-shipping" ? "customer-info.html" : "login.html", "前の画面へ戻る")}<div class="two-column"><section class="content-card"><div class="delivery-type"><small>お届け方法</small><strong>${deliveryName()}</strong></div>${customerDetails()}</section><section class="content-card"><h2>${isDelivery ? "定期配達について" : "お届け先"}</h2>${isDelivery ? `<p>登録済みの配達曜日と住所でお届けする想定です。</p><div class="notice"><strong>曜日や住所を変更したい場合</strong><p>配達コースの確認が必要なため、店舗へご相談ください。</p></div>` : `<label class="check-row"><input type="checkbox" data-separate ${state.separateDestination ? "checked" : ""}> 注文者と別の住所へ送る</label><div class="separate-box ${state.separateDestination ? "is-visible" : ""}" data-separate-box><p>試作では別住所入力欄の開閉だけを確認します。</p>${field("destination","別のお届け先","テストお届け先")}</div><p class="muted">一般発送用のお届け区分コードは、現在のDBマスタ確認後に既存値へ対応させます。</p>`}</section></div><div class="actions"><a class="secondary-button" href="${state.customerMode === "new-shipping" ? "customer-info.html" : "login.html"}">戻る</a><a class="primary-button purchase-cta" href="confirm.html">注文内容の確認へ</a></div></main>${bottomNav()}`;
     bindCommon();
     const checkbox = document.querySelector("[data-separate]");
     if (checkbox) checkbox.addEventListener("change", () => { state.separateDestination = checkbox.checked; save(); document.querySelector("[data-separate-box]").classList.toggle("is-visible", checkbox.checked); });
@@ -208,12 +234,12 @@
 
   function renderConfirm() {
     if (!state.customerMode) { location.href = "customer-entry.html"; return; }
-    document.querySelector("#app").innerHTML = `${flowIntro("注文内容の確認", "内容をご確認ください。この試作から実際の注文は送信されません。", "delivery-info.html", "お届け情報へ戻る")}<div class="confirm-layout"><div><section class="content-card"><h2>商品</h2>${orderItems()}<a class="text-link" href="cart.html">商品・数量を変更する</a></section><section class="content-card"><h2>注文者</h2>${customerDetails()}</section></div><aside class="content-card confirm-summary"><h2>お届け</h2><p class="summary-delivery">${deliveryName()}</p><p>${esc(state.customer.name)} 様<br>〒${esc(state.customer.postal)}<br>${esc(state.customer.address1)}</p><p class="total"><span>合計</span><strong>${money(cartTotal())}円</strong></p><div class="prototype-warning">比較用試作です。注文、決済、メール、DB登録、CSV出力、NILE連携は実行されません。</div><a class="primary-button" href="complete.html">試作の注文完了画面へ</a></aside></div></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("注文内容の確認", "内容をご確認ください。この試作から実際の注文は送信されません。", "delivery-info.html", "お届け情報へ戻る")}<div class="confirm-layout"><div><section class="content-card"><h2>商品</h2>${orderItems()}<a class="text-link" href="cart.html">商品・数量を変更する</a></section><section class="content-card"><h2>注文者</h2>${customerDetails()}</section></div><aside class="content-card confirm-summary"><h2>お届け</h2><p class="summary-delivery">${deliveryName()}</p><p>${esc(state.customer.name)} 様<br>〒${esc(state.customer.postal)}<br>${esc(state.customer.address1)}</p><p class="total"><span>合計</span><strong>${money(cartTotal())}円</strong></p><div class="prototype-warning">比較用試作です。注文、決済、メール、DB登録、CSV出力、NILE連携は実行されません。</div><a class="primary-button purchase-cta" href="complete.html">試作の注文完了画面へ</a></aside></div></main>${bottomNav()}`;
     bindCommon();
   }
 
   function renderComplete() {
-    document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1">${stepper()}<section class="complete-card"><div class="complete-mark">✓</div><h1>操作確認が完了しました</h1><p>実際の注文は送信されていません。</p><div class="complete-summary"><span>お届け方法</span><strong>${deliveryName()}</strong></div>${state.customerMode === "new-shipping" ? `<div class="notice"><strong>実際の運用では</strong><p>Web会員CDの発行方法は、本番実装前に確認します。</p></div>` : ""}<a class="primary-button" href="index.html" data-finish>商品一覧へ戻る</a><a class="secondary-button" href="confirm.html">確認画面へ戻る</a></section></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1">${stepper()}<section class="complete-card"><div class="complete-mark">✓</div><h1>操作確認が完了しました</h1><p>実際の注文は送信されていません。</p><div class="complete-summary"><span>お届け方法</span><strong>${deliveryName()}</strong></div>${state.customerMode === "new-shipping" ? `<div class="notice"><strong>実際の運用では</strong><p>Web会員CDの発行方法は、本番実装前に確認します。</p></div>` : ""}<a class="secondary-button" href="index.html" data-finish>商品一覧へ戻る</a><a class="text-link" href="confirm.html">確認画面へ戻る</a></section></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-finish]").addEventListener("click", () => { state.cart = {}; save(); });
   }
@@ -233,8 +259,8 @@
   }
   function focusSearch() { if (page !== "catalog") { location.href = "index.html#word"; return; } const input = document.querySelector("#word"); input?.scrollIntoView({block:"center"}); input?.focus(); }
   function bindCompactHeader() { const bar = document.querySelector("[data-compact-header]"); let ticking = false; const update = () => { const visible = scrollY > 150; document.body.classList.toggle("has-compact-header", visible); bar?.toggleAttribute("inert", !visible); bar?.setAttribute("aria-hidden", String(!visible)); ticking = false; }; if (compactHeaderScrollHandler) removeEventListener("scroll", compactHeaderScrollHandler); compactHeaderScrollHandler = () => { if (!ticking) { requestAnimationFrame(update); ticking = true; } }; addEventListener("scroll", compactHeaderScrollHandler, {passive:true}); update(); }
-  function openCategories() { const panel = document.querySelector("[data-category-panel]"); if (!panel) { location.href = "index.html?open=categories"; return; } panel.classList.add("is-open"); panel.setAttribute("aria-hidden", "false"); document.querySelector("[data-scrim]").classList.add("is-open"); }
-  function closeCategories() { document.querySelector("[data-category-panel]")?.classList.remove("is-open"); document.querySelector("[data-category-panel]")?.setAttribute("aria-hidden", "true"); document.querySelector("[data-scrim]")?.classList.remove("is-open"); }
+  function openCategories() { const panel = document.querySelector("[data-category-panel]"); if (!panel) { location.href = "index.html?open=categories"; return; } panel.classList.add("is-open"); panel.setAttribute("aria-hidden", "false"); document.querySelector("[data-scrim]").classList.add("is-open"); document.querySelectorAll(".bottom-nav [data-category-trigger]").forEach((button) => { button.classList.add("is-active"); button.setAttribute("aria-pressed", "true"); }); }
+  function closeCategories() { document.querySelector("[data-category-panel]")?.classList.remove("is-open"); document.querySelector("[data-category-panel]")?.setAttribute("aria-hidden", "true"); document.querySelector("[data-scrim]")?.classList.remove("is-open"); document.querySelectorAll(".bottom-nav [data-category-trigger]").forEach((button) => { button.classList.toggle("is-active", page === "catalog" && !query); button.setAttribute("aria-pressed", String(page === "catalog" && !query)); }); }
   function selectCategory(code) { activeCategory = code; const params = new URLSearchParams(); if (code !== "0") params.set("gc_cd", code); if (query) params.set("word", query); location.href = `index.html${params.toString() ? `?${params}` : ""}#products`; }
   function bindCatalog() {
     document.querySelector("[data-search-form]").addEventListener("submit", (event) => { event.preventDefault(); query = new FormData(event.currentTarget).get("word") || ""; const params = new URLSearchParams(); if (activeCategory !== "0") params.set("gc_cd", activeCategory); if (query) params.set("word", query); location.href = `index.html?${params}#products`; });
