@@ -119,6 +119,43 @@ test("responsive CSS keeps two mobile columns, four desktop columns and portrait
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
 });
 
+test("long specifications stay clamped in list cards while purchase controls remain at the card bottom", () => {
+  const { api } = loadHelpers();
+  const fixture = {
+    SHOHINCD: 999991,
+    SHOHINNM: "長文規格の確認商品",
+    BAIKA: 500,
+    KIKAKUSETSUMEI: "この規格は商品カードの高さを揃えるために二行を大きく超える長い確認用の文章です。詳細画面では全文を表示します。",
+    DELFLG: 0,
+    ONDOTAI: 0,
+    image_url: "",
+    thumbnail_url: ""
+  };
+  const card = api.productCard(fixture);
+  const detail = api.renderDetail({ products: [fixture], categories: [] }, null, "999991", {});
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+
+  assert.match(card, /class="spec"/);
+  assert.match(detail, new RegExp(fixture.KIKAKUSETSUMEI));
+  assert.match(css, /\.product-card\s*\{[^}]*display:\s*flex[^}]*flex-direction:\s*column/s);
+  assert.match(css, /\.product-copy\s*\{[^}]*flex:\s*1/s);
+  assert.match(css, /\.spec\s*\{[^}]*-webkit-line-clamp:\s*2/s);
+  assert.match(css, /\.product-purchase\s*\{[^}]*margin-top:\s*auto/s);
+});
+
+test("URL-opened category drawer chooses a focusable page control as its close return target", () => {
+  const { api } = loadHelpers();
+  const fallback = { focus() {} };
+  const fakeDocument = {
+    activeElement: { tagName: "BODY" },
+    querySelector(selector) {
+      assert.equal(selector, "[data-open-categories]");
+      return fallback;
+    }
+  };
+  assert.equal(api.categoryDrawerOrigin(null, fakeDocument), fallback);
+});
+
 test("category drawer is modal, keyboard-contained, and restores page access on close", () => {
   const { source } = loadHelpers();
   assert.match(source, /role="dialog" aria-modal="true"[^>]*hidden inert/);

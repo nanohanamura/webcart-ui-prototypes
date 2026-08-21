@@ -42,10 +42,10 @@ test("setting quantity to zero removes the product", () => {
 test("snapshot cart loading removes unknown, unlisted, invalid-price and invalid-quantity entries", () => {
   const { api } = loadHelpers();
   const [listed] = listedSample(1);
-  const unlisted = catalog.products.find((product) => product.DELFLG !== 0);
+  const unlisted = { ...listed, SHOHINCD: "unlisted", DELFLG: 1 };
   const customCatalog = {
     ...catalog,
-    products: [...catalog.products, { ...listed, SHOHINCD: "null-price", BAIKA: null }]
+    products: [...catalog.products, unlisted, { ...listed, SHOHINCD: "null-price", BAIKA: null }]
   };
   const cleaned = api.sanitizeCart({
     [listed.SHOHINCD]: 2,

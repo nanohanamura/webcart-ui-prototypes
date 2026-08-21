@@ -55,15 +55,31 @@ def payload():
 
 
 class SnapshotContractTests(unittest.TestCase):
-    def test_valid_snapshot_keeps_all_products_and_builds_safe_image_urls(self):
+    def test_checked_in_public_catalog_contains_no_hidden_product_rows(self):
+        catalog = json.loads(
+            (ROOT / "data" / "catalog.json").read_text(encoding="utf-8")
+        )
+        meta = json.loads(
+            (ROOT / "data" / "catalog-meta.json").read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(621, len(catalog["products"]))
+        self.assertTrue(all(item["DELFLG"] == 0 for item in catalog["products"]))
+        self.assertEqual(916, meta["source_product_count"])
+        self.assertEqual(621, meta["listed_product_count"])
+        self.assertEqual(295, meta["hidden_product_count"])
+        self.assertEqual(2, meta["decode_warning_count"])
+        self.assertEqual(catalog["snapshot_id"], meta["snapshot_id"])
+
+    def test_valid_snapshot_publishes_only_listed_products_and_keeps_safe_aggregate_counts(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = build_snapshot.build_snapshot(payload(), Path(tmp))
             catalog = json.loads((Path(tmp) / "catalog.json").read_text(encoding="utf-8"))
             meta = json.loads((Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8"))
 
-        self.assertEqual(2, result["product_count"])
-        self.assertEqual(2, len(catalog["products"]))
-        self.assertEqual([0, 1], [item["DELFLG"] for item in catalog["products"]])
+        self.assertEqual(1, result["product_count"])
+        self.assertEqual(1, len(catalog["products"]))
+        self.assertEqual([0], [item["DELFLG"] for item in catalog["products"]])
         self.assertEqual(
             "https://nano87.sakura.ne.jp/webcart/img/0501.jpg",
             catalog["products"][0]["image_url"],
@@ -72,11 +88,12 @@ class SnapshotContractTests(unittest.TestCase):
             "https://nano87.sakura.ne.jp/webcart/img/thum/0501_small.jpg",
             catalog["products"][0]["thumbnail_url"],
         )
-        self.assertIsNone(catalog["products"][1]["image_url"])
-        self.assertEqual(2, meta["product_count"])
+        self.assertEqual(1, meta["product_count"])
+        self.assertEqual(2, meta["source_product_count"])
+        self.assertEqual(1, meta["listed_product_count"])
+        self.assertEqual(1, meta["hidden_product_count"])
         self.assertEqual(1, meta["category_count"])
-        self.assertEqual([0, 1, 2], meta["allowed_delflg"])
-        self.assertEqual("UI displays only products where DELFLG == 0", meta["visibility_contract"])
+        self.assertEqual("Public catalog contains only products where DELFLG == 0", meta["visibility_contract"])
 
     def assert_rejected(self, data, message_fragment):
         with tempfile.TemporaryDirectory() as tmp:
@@ -114,20 +131,20 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(first_catalog_bytes, second_catalog_bytes)
         self.assertEqual(original_category, catalog["categories"][0])
         self.assertEqual(
-            [44, 998, 999],
+            [44, 999],
             [row["SHOHINBUNRUICD"] for row in catalog["categories"]],
         )
-        for row, code in zip(catalog["categories"][1:], (998, 999)):
+        for row, code in zip(catalog["categories"][1:], (999,)):
             self.assertEqual("分類名未登録", row["SHOHINBUNRUITITLE"])
             self.assertEqual("分類コード %d" % code, row["SHOHINBUNRUISUBTITLE"])
         self.assertEqual(
-            [999, 998, 999],
+            [999],
             [row["SHOHINBUNRUICD"] for row in catalog["products"]],
         )
         self.assertEqual(3, meta["orphan_product_count"])
         self.assertEqual(1, meta["listed_orphan_product_count"])
-        self.assertEqual(2, meta["synthesized_category_count"])
-        self.assertEqual([998, 999], meta["synthesized_category_codes"])
+        self.assertEqual(1, meta["synthesized_category_count"])
+        self.assertEqual([999], meta["synthesized_category_codes"])
 
     def test_invalid_delflg_is_rejected(self):
         data = payload()
@@ -171,9 +188,30 @@ class SnapshotContractTests(unittest.TestCase):
                 (Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8")
             )
 
-        hidden = next(row for row in catalog["products"] if row["SHOHINCD"] == 502)
-        self.assertIsNone(hidden["BAIKA"])
+        self.assertNotIn(502, [row["SHOHINCD"] for row in catalog["products"]])
         self.assertEqual(1, meta["hidden_null_price_count"])
+
+    def test_hidden_product_details_and_hidden_decode_warnings_are_not_published(self):
+        data = payload()
+        data["products"][1].update({
+            "SHOHINNM": "非掲載の秘密商品名",
+            "SHOSAISETSUMEI": "非掲載の説明�",
+            "KIKAKUSETSUMEI": "非掲載の規格",
+            "GAZOFILENM": "hidden-secret.jpg",
+        })
+        data["decode_warnings"] = ["products[1].SHOSAISETSUMEI"]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            build_snapshot.build_snapshot(data, Path(tmp))
+            catalog_text = (Path(tmp) / "catalog.json").read_text(encoding="utf-8")
+            meta_text = (Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8")
+            meta = json.loads(meta_text)
+
+        for hidden_detail in ("502", "非掲載の秘密商品名", "非掲載の説明", "非掲載の規格", "hidden-secret.jpg"):
+            self.assertNotIn(hidden_detail, catalog_text)
+            self.assertNotIn(hidden_detail, meta_text)
+        self.assertEqual(0, meta["decode_warning_count"])
+        self.assertEqual([], meta["decode_warning_products"])
 
     def test_listed_product_with_null_price_is_rejected(self):
         data = payload()
@@ -235,7 +273,7 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertIn("decode_warning_products", first_meta)
         self.assertEqual(expected, first_meta["decode_warning_products"])
         self.assertEqual(expected, second_meta["decode_warning_products"])
-        self.assertNotEqual(first_meta["decode_warnings"], second_meta["decode_warnings"])
+        self.assertEqual(first_meta["decode_warnings"], second_meta["decode_warnings"])
 
     def test_decode_warnings_reject_malformed_forbidden_duplicate_and_out_of_range(self):
         invalid_warnings = (
@@ -339,7 +377,7 @@ class SnapshotContractTests(unittest.TestCase):
             catalog = json.loads(first_catalog)
 
         self.assertEqual(first_catalog, second_catalog)
-        self.assertEqual([503, 501, 502], [row["SHOHINCD"] for row in catalog["products"]])
+        self.assertEqual([503, 501], [row["SHOHINCD"] for row in catalog["products"]])
         self.assertEqual([44, 45], [row["SHOHINBUNRUICD"] for row in catalog["categories"]])
 
     def test_snapshot_id_matches_catalog_content_and_is_order_independent(self):

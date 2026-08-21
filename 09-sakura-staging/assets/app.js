@@ -531,6 +531,13 @@
     return flowConsult(catalog, cart);
   }
 
+  function categoryDrawerOrigin(origin, pageDocument) {
+    const candidate = origin || pageDocument?.activeElement;
+    const isBody = candidate === pageDocument?.body || candidate?.tagName === "BODY";
+    if (candidate && !isBody && typeof candidate.focus === "function") return candidate;
+    return pageDocument?.querySelector("[data-open-categories]") || null;
+  }
+
   function bindCatalogEvents() {
     const panel = document.querySelector(".category-panel");
     const scrim = document.querySelector(".scrim");
@@ -540,7 +547,7 @@
     const setBackgroundInert = (isOpen) => backgroundNodes.forEach((node) => node.toggleAttribute("inert", isOpen));
     const open = (origin) => {
       if (!panel || !scrim) return;
-      drawerOrigin = origin || document.activeElement;
+      drawerOrigin = categoryDrawerOrigin(origin, document);
       panel.hidden = false;
       panel.removeAttribute("inert");
       panel.classList.add("is-open");
@@ -710,7 +717,7 @@
     });
   }
 
-  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, escapeHtml };
+  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, categoryDrawerOrigin, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {

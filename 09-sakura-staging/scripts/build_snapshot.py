@@ -323,16 +323,27 @@ def _stable_decode_warning_products(payload):
 
 def build_snapshot(payload, output_dir):
     validate_payload(payload)
-    decode_warning_products = _stable_decode_warning_products(payload)
+    source_warning_products = _stable_decode_warning_products(payload)
+    source_products = payload["products"]
+    listed_codes = {
+        item["SHOHINCD"] for item in source_products if item["DELFLG"] == 0
+    }
+    decode_warning_products = [
+        warning for warning in source_warning_products
+        if warning["product_code"] in listed_codes
+    ]
     products = []
     ordered_products = sorted(
-        payload["products"],
+        (item for item in source_products if item["DELFLG"] == 0),
         key=lambda row: (row["NARABIJUN"], row["SHOHINCD"]),
     )
     for source in ordered_products:
         item = dict(source)
         item["image_url"], item["thumbnail_url"] = _image_urls(item["GAZOFILENM"])
         products.append(item)
+    index_by_code = {
+        item["SHOHINCD"]: index for index, item in enumerate(products)
+    }
     categories = [
         dict(source)
         for source in sorted(
@@ -342,13 +353,18 @@ def build_snapshot(payload, output_dir):
     original_category_codes = {
         category["SHOHINBUNRUICD"] for category in categories
     }
-    orphan_products = [
+    source_orphan_products = [
+        item
+        for item in source_products
+        if item["SHOHINBUNRUICD"] not in original_category_codes
+    ]
+    listed_orphan_products = [
         item
         for item in products
         if item["SHOHINBUNRUICD"] not in original_category_codes
     ]
     synthesized_category_codes = sorted({
-        item["SHOHINBUNRUICD"] for item in orphan_products
+        item["SHOHINBUNRUICD"] for item in listed_orphan_products
     })
     categories.extend(
         _synthesized_category(code) for code in synthesized_category_codes
@@ -370,20 +386,25 @@ def build_snapshot(payload, output_dir):
         "generated_at": generated_at,
         "product_count": len(products),
         "category_count": len(categories),
-        "allowed_delflg": list(ALLOWED_DELFLG),
-        "visibility_contract": "UI displays only products where DELFLG == 0",
-        "decode_warning_count": len(payload["decode_warnings"]),
-        "decode_warnings": list(payload["decode_warnings"]),
+        "source_product_count": len(source_products),
+        "listed_product_count": len(products),
+        "hidden_product_count": sum(
+            1 for item in source_products if item["DELFLG"] != 0
+        ),
+        "visibility_contract": "Public catalog contains only products where DELFLG == 0",
+        "decode_warning_count": len(decode_warning_products),
+        "decode_warnings": [
+            "products[%d].%s" % (index_by_code[warning["product_code"]], warning["field"])
+            for warning in decode_warning_products
+        ],
         "decode_warning_products": decode_warning_products,
         "hidden_null_price_count": sum(
             1
-            for item in products
+            for item in source_products
             if item["DELFLG"] != 0 and item["BAIKA"] is None
         ),
-        "orphan_product_count": len(orphan_products),
-        "listed_orphan_product_count": sum(
-            1 for item in orphan_products if item["DELFLG"] == 0
-        ),
+        "orphan_product_count": len(source_orphan_products),
+        "listed_orphan_product_count": len(listed_orphan_products),
         "synthesized_category_count": len(synthesized_category_codes),
         "synthesized_category_codes": synthesized_category_codes,
     }

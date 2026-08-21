@@ -1,63 +1,10 @@
 {
-  "allowed_delflg": [
-    0,
-    1,
-    2
-  ],
   "category_count": 56,
-  "decode_warning_count": 14,
+  "decode_warning_count": 2,
   "decode_warning_products": [
     {
       "field": "SHOSAISETSUMEI",
-      "product_code": 398
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 399
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 408
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 427
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 463
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 465
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 494
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 499
-    },
-    {
-      "field": "SHOSAISETSUMEI",
       "product_code": 2704
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 3468
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 3588
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 3589
-    },
-    {
-      "field": "SHOSAISETSUMEI",
-      "product_code": 3598
     },
     {
       "field": "SHOSAISETSUMEI",
@@ -65,33 +12,24 @@
     }
   ],
   "decode_warnings": [
-    "products[26].SHOSAISETSUMEI",
-    "products[27].SHOSAISETSUMEI",
-    "products[34].SHOSAISETSUMEI",
-    "products[39].SHOSAISETSUMEI",
-    "products[52].SHOSAISETSUMEI",
-    "products[53].SHOSAISETSUMEI",
-    "products[63].SHOSAISETSUMEI",
-    "products[65].SHOSAISETSUMEI",
-    "products[591].SHOSAISETSUMEI",
-    "products[680].SHOSAISETSUMEI",
-    "products[721].SHOSAISETSUMEI",
-    "products[722].SHOSAISETSUMEI",
-    "products[725].SHOSAISETSUMEI",
-    "products[838].SHOSAISETSUMEI"
+    "products[440].SHOSAISETSUMEI",
+    "products[562].SHOSAISETSUMEI"
   ],
-  "generated_at": "2026-08-21T16:10:36Z",
+  "generated_at": "2026-08-21T17:02:30Z",
   "hidden_null_price_count": 5,
+  "hidden_product_count": 295,
   "listed_orphan_product_count": 9,
+  "listed_product_count": 621,
   "orphan_product_count": 159,
-  "product_count": 916,
+  "product_count": 621,
   "schema_version": 2,
-  "snapshot_id": "sha256:e01f82b94b8227246ceef9995b8aa12265eba58aeabc034271daf46ebfc11348",
+  "snapshot_id": "sha256:8b8c01972fb91fa01788a32ccccd22b502e975397c5201ab59bdd297dbd2ed97",
+  "source_product_count": 916,
   "synthesized_category_codes": [
     12,
     90,
     99
   ],
   "synthesized_category_count": 3,
-  "visibility_contract": "UI displays only products where DELFLG == 0"
+  "visibility_contract": "Public catalog contains only products where DELFLG == 0"
 }
