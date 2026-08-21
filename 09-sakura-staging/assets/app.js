@@ -472,7 +472,10 @@
     if (state.customerType === "member-delivery") {
       return flowFrame(catalog, cart, "delivery", "お届け情報", `<form class="flow-card flow-form" data-flow-form="delivery"><section class="delivery-type-panel"><small>お届け方法</small><h2>登録済みの配達曜日で次回配達</h2></section><p>登録済みのお届け先へお届けする想定です。</p><p class="pending-confirmation">次回配達の確定内容は店長確認が必要です。</p><button class="flow-action primary-flow-action" type="submit">注文内容の確認へ</button></form>`);
     }
-    return flowFrame(catalog, cart, "delivery", "お届け情報", `<form class="flow-card flow-form" data-flow-form="delivery"><section class="delivery-type-panel"><small>お届け方法</small><h2>一般発送のお届け先</h2></section><label class="checkbox-line"><input name="separate" type="checkbox" value="1">注文者と別の住所へ送る</label><div class="separate-address" data-separate-address hidden><p class="prototype-data-warning">実在する個人情報は入力しないでください。</p><label>お届け先氏名<input name="deliveryName" type="text" value="試作 お届け先"></label><label>郵便番号<input name="deliveryPostal" type="text" value="000-0000"></label><label>住所<input name="deliveryAddress" type="text" value="試作用お届け先 4-5-6"></label><label>電話番号<input name="deliveryPhone" type="text" value="000-0000-0000"></label></div><p class="pending-confirmation">送料・支払方法・一般発送のお届け区分は店長確認が必要です。</p><button class="flow-action primary-flow-action" type="submit">注文内容の確認へ</button></form>`);
+    const delivery = state.delivery || {};
+    const isSeparate = delivery.separate === true;
+    const fieldState = isSeparate ? " required" : " disabled";
+    return flowFrame(catalog, cart, "delivery", "お届け情報", `<form class="flow-card flow-form" data-flow-form="delivery"><section class="delivery-type-panel"><small>お届け方法</small><h2>一般発送のお届け先</h2></section><label class="checkbox-line"><input name="separate" type="checkbox" value="1"${isSeparate ? " checked" : ""}>注文者と別の住所へ送る</label><div class="separate-address" data-separate-address${isSeparate ? "" : " hidden"}><p class="prototype-data-warning">実在する個人情報は入力しないでください。</p><label>お届け先氏名<input name="deliveryName" type="text" value="${escapeHtml(delivery.deliveryName || "試作 お届け先")}"${fieldState}></label><label>郵便番号<input name="deliveryPostal" type="text" value="${escapeHtml(delivery.deliveryPostal || "000-0000")}"${fieldState}></label><label>住所<input name="deliveryAddress" type="text" value="${escapeHtml(delivery.deliveryAddress || "試作用お届け先 4-5-6")}"${fieldState}></label><label>電話番号<input name="deliveryPhone" type="text" value="${escapeHtml(delivery.deliveryPhone || "000-0000-0000")}"${fieldState}></label></div><p class="pending-confirmation">送料・支払方法・一般発送のお届け区分は店長確認が必要です。</p><button class="flow-action primary-flow-action" type="submit">注文内容の確認へ</button></form>`);
   }
 
   function flowConsult(catalog, cart) {
@@ -489,11 +492,16 @@
     const isDelivery = state.customerType === "member-delivery";
     const orderer = state.orderer || {};
     const ordererText = orderer.name ? `${escapeHtml(orderer.name)}<br>${escapeHtml(orderer.postal)} ${escapeHtml(orderer.address)}<br>${escapeHtml(orderer.email)}` : "登録済みの会員情報（試作では表示省略）";
-    const deliveryText = isDelivery ? "登録済みの配達曜日で次回配達" : (state.delivery && state.delivery.separate ? "注文者と別のお届け先" : "注文者と同じ住所へ一般発送");
+    const delivery = state.delivery || {};
+    const deliveryMarkup = isDelivery
+      ? "<p>登録済みの配達曜日で次回配達</p>"
+      : (delivery.separate
+        ? `<p><strong>別のお届け先</strong><br>${escapeHtml(delivery.deliveryName)}<br>${escapeHtml(delivery.deliveryPostal)} ${escapeHtml(delivery.deliveryAddress)}<br>${escapeHtml(delivery.deliveryPhone)}</p>`
+        : "<p>注文者と同じ住所へ一般発送</p>");
     const pendingText = isDelivery
       ? "支払方法・次回配達の確定内容は店長確認が必要です。"
       : "送料・支払方法・一般発送のお届け区分は店長確認が必要です。";
-    return flowFrame(catalog, cart, "confirm", "注文内容を確認", `<div class="confirmation-grid"><section class="flow-card confirmation-section"><h2>商品確認</h2><ul class="confirmation-products">${flowConfirmationLines(catalog, cart)}</ul><p class="confirmation-total"><span>商品合計</span><strong>${numberFormat.format(summary.subtotal)}円</strong></p></section><section class="flow-card confirmation-section"><h2>注文者</h2><p>${ordererText}</p><h2>お届け</h2><p>${escapeHtml(deliveryText)}</p><p class="pending-confirmation">${pendingText}</p></section></div><div class="flow-footer-actions"><button class="flow-action outline-flow-action" type="button" data-flow-route="delivery">お届け情報へ戻る</button><button class="flow-action primary-flow-action" type="button" data-flow-confirm>試作の操作を完了する</button></div>`);
+    return flowFrame(catalog, cart, "confirm", "注文内容を確認", `<div class="confirmation-grid"><section class="flow-card confirmation-section"><h2>商品確認</h2><ul class="confirmation-products">${flowConfirmationLines(catalog, cart)}</ul><p class="confirmation-total"><span>商品合計</span><strong>${numberFormat.format(summary.subtotal)}円</strong></p></section><section class="flow-card confirmation-section"><h2>注文者</h2><p>${ordererText}</p><h2>お届け</h2>${deliveryMarkup}<p class="pending-confirmation">${pendingText}</p></section></div><div class="flow-footer-actions"><button class="flow-action outline-flow-action" type="button" data-flow-route="delivery">お届け情報へ戻る</button><button class="flow-action primary-flow-action" type="button" data-flow-confirm>試作の操作を完了する</button></div>`);
   }
 
   function flowComplete(catalog, cart) {
@@ -658,7 +666,7 @@
   function bindFlowEvents(renderPage) {
     const navigate = (route) => {
       history.pushState(null, "", `${location.pathname}?flow=${encodeURIComponent(route)}`);
-      renderPage();
+      renderPage({ focusMain: true });
     };
     document.querySelectorAll("[data-customer-type]").forEach((button) => button.addEventListener("click", () => {
       flowState = { customerType: button.dataset.customerType };
@@ -688,7 +696,13 @@
     }));
     document.querySelector("[name=separate]")?.addEventListener("change", (event) => {
       const fields = document.querySelector("[data-separate-address]");
-      if (fields) fields.hidden = !event.currentTarget.checked;
+      const isSeparate = event.currentTarget.checked;
+      if (!fields) return;
+      fields.hidden = !isSeparate;
+      fields.querySelectorAll("input").forEach((field) => {
+        field.required = isSeparate;
+        field.disabled = !isSeparate;
+      });
     });
     document.querySelector("[data-flow-confirm]")?.addEventListener("click", () => {
       flowState.confirmed = true;
@@ -713,7 +727,7 @@
         const storageKey = cartStorageKey(catalog.snapshot_id);
         const storage = resolveCartStorage(global);
         let cart = loadCart(storage, storageKey, catalog);
-        const renderPage = () => {
+        const renderPage = (options = {}) => {
           const params = new URLSearchParams(location.search);
           cart = loadCart(storage, storageKey, catalog);
           document.querySelector("#app").innerHTML = params.has("flow")
@@ -724,10 +738,11 @@
           bindCatalogEvents();
           bindImageErrors();
           bindFlowEvents(renderPage);
+          if (options.focusMain) document.querySelector("#main")?.focus({ preventScroll: true });
         };
         renderPage();
         bindCartEvents(catalog, cart, storage, storageKey);
-        global.addEventListener("popstate", renderPage);
+        global.addEventListener("popstate", () => renderPage({ focusMain: true }));
       })
       .catch(() => { document.querySelector("#app").innerHTML = '<main class="load-error"><h1>商品を読み込めませんでした</h1><p>時間をおいて、もう一度お試しください。</p></main>'; });
   }

@@ -84,6 +84,56 @@ test("general shipping and existing delivery show different delivery confirmatio
   assert.doesNotMatch(regularConfirm, /一般発送のお届け区分/);
 });
 
+test("a separate shipping address requires all four fields and is escaped on confirmation", () => {
+  const { api, source } = loadHelpers();
+  const cart = cartWithOneProduct(api);
+  const separateState = {
+    customerType: "new-general",
+    orderer: { name: "試作", email: "sample@example.invalid", postal: "000", address: "試作", phone: "000" },
+    delivery: {
+      separate: true,
+      deliveryName: "<script>受取人</script>",
+      deliveryPostal: "111-1111",
+      deliveryAddress: "<b>試作お届け先</b>",
+      deliveryPhone: "111-1111-1111"
+    }
+  };
+  const delivery = api.renderFlow(catalog, cart, "delivery", separateState);
+  assert.match(delivery, /name="separate"[^>]*checked/);
+  assert.doesNotMatch(delivery, /data-separate-address hidden/);
+  for (const name of ["deliveryName", "deliveryPostal", "deliveryAddress", "deliveryPhone"]) {
+    assert.match(delivery, new RegExp(`name="${name}"[^>]*required`));
+    assert.doesNotMatch(delivery, new RegExp(`name="${name}"[^>]*disabled`));
+  }
+  assert.match(delivery, /&lt;script&gt;受取人&lt;\/script&gt;/);
+  assert.doesNotMatch(delivery, /<script>受取人<\/script>/);
+
+  const confirm = api.renderFlow(catalog, cart, "confirm", separateState);
+  assert.match(confirm, /別のお届け先/);
+  assert.match(confirm, /&lt;script&gt;受取人&lt;\/script&gt;/);
+  assert.match(confirm, /111-1111/);
+  assert.match(confirm, /&lt;b&gt;試作お届け先&lt;\/b&gt;/);
+  assert.match(confirm, /111-1111-1111/);
+  assert.doesNotMatch(confirm, /<script>受取人<\/script>|<b>試作お届け先<\/b>/);
+  assert.match(source, /field\.required\s*=\s*isSeparate/);
+  assert.match(source, /field\.disabled\s*=\s*!isSeparate/);
+});
+
+test("unselected separate-address fields stay optional and regular delivery confirmation stays unchanged", () => {
+  const { api } = loadHelpers();
+  const cart = cartWithOneProduct(api);
+  const state = { customerType: "new-general", orderer: { name: "試作", email: "sample@example.invalid", postal: "000", address: "試作", phone: "000" }, delivery: { separate: false } };
+  const delivery = api.renderFlow(catalog, cart, "delivery", state);
+  assert.match(delivery, /data-separate-address hidden/);
+  for (const name of ["deliveryName", "deliveryPostal", "deliveryAddress", "deliveryPhone"]) {
+    assert.match(delivery, new RegExp(`name="${name}"[^>]*disabled`));
+    assert.doesNotMatch(delivery, new RegExp(`name="${name}"[^>]*required`));
+  }
+  const confirm = api.renderFlow(catalog, cart, "confirm", state);
+  assert.match(confirm, /注文者と同じ住所へ一般発送/);
+  assert.doesNotMatch(confirm, /別のお届け先/);
+});
+
 test("first-time delivery is consultation-only and does not expose a phone action", () => {
   const { api } = loadHelpers();
   const html = api.renderFlow(catalog, cartWithOneProduct(api), "consult", { customerType: "new-delivery" });
@@ -147,6 +197,14 @@ test("flow forms are prevented, use page-memory state, and add no external write
   assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|href=["']tel:/i);
   assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/catalog(?:-meta)?\.json)/);
   assert.doesNotMatch(source, /<form[^>]+action=/i);
+});
+
+test("in-page and browser-history transitions announce the new screen without focusing initial load", () => {
+  const { source } = loadHelpers();
+  assert.match(source, /renderPage\(\{\s*focusMain:\s*true\s*\}\)/);
+  assert.match(source, /addEventListener\("popstate",\s*\(\)\s*=>\s*renderPage\(\{\s*focusMain:\s*true\s*\}\)\)/);
+  assert.match(source, /if\s*\(options\.focusMain\)\s*document\.querySelector\("#main"\)\?\.focus/);
+  assert.match(source, /\n\s*renderPage\(\);\n/, "initial load must render without forced focus");
 });
 
 test("cart checkout is enabled and enters the safe in-page flow", () => {
