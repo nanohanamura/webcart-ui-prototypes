@@ -122,11 +122,38 @@ test("rendered application owns one persistent polite cart live region", () => {
   assert.match(html, /id="cart-status"[^>]*aria-live="polite"/);
 });
 
-test("cart interaction code restores focus after quantity updates", () => {
-  const { source } = loadHelpers();
-  assert.match(source, /data-cart-focus/);
+test("cart focus target always points to an enabled control after add and quantity changes", () => {
+  const { api, source } = loadHelpers();
+  const [product] = listedSample(1);
+  const code = String(product.SHOHINCD);
+  const cases = [
+    { action: "add", quantity: 1, expected: `${code}:increase` },
+    { action: "increase", quantity: api.MAX_CART_QUANTITY, expected: `${code}:decrease` },
+    { action: "decrease", quantity: 0, expected: `${code}:add` }
+  ];
+  for (const item of cases) {
+    const focusKey = api.cartFocusKey(code, item.action, item.quantity);
+    assert.equal(focusKey, item.expected);
+    const controls = api.cartControls(product, item.quantity);
+    const escapedKey = focusKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    assert.match(controls, new RegExp(`data-cart-focus="${escapedKey}"`));
+    assert.doesNotMatch(controls, new RegExp(`data-cart-focus="${escapedKey}"[^>]*disabled`));
+  }
+  assert.match(source, /cartFocusKey\(code, action, nextQuantity\)/);
   assert.match(source, /focusTarget\?\.focus\(\)/);
-  assert.match(source, /announceCartChange/);
+});
+
+test("localStorage getter failure uses one persistent in-memory storage for load save and binding", () => {
+  const { api, source } = loadHelpers();
+  const blockedGlobal = {};
+  Object.defineProperty(blockedGlobal, "localStorage", { get() { throw new Error("SecurityError"); } });
+  const storage = api.resolveCartStorage(blockedGlobal);
+  storage.setItem("cart", '{"23":2}');
+  assert.equal(storage.getItem("cart"), '{"23":2}');
+  assert.equal(api.resolveCartStorage(blockedGlobal), storage, "fallback must stay stable for this page lifetime");
+  assert.match(source, /const storage = resolveCartStorage\(global\)/);
+  assert.match(source, /loadCart\(storage, storageKey, catalog\)/);
+  assert.match(source, /bindCartEvents\(catalog, cart, storage, storageKey\)/);
 });
 
 test("cart remains prototype-only and connects to no order, login, payment, mail, CSV, NILE or remote endpoint", () => {

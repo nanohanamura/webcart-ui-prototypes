@@ -21,6 +21,7 @@ test("page skeleton and local snapshot loader exist", () => {
   assert.match(html, /id="app"/);
   assert.match(html, /assets\/app\.js/);
   assert.match(html, /assets\/styles\.css/);
+  assert.match(html, /<a class="skip-link" href="#main">メインコンテンツへ移動<\/a>/);
   const { source } = loadHelpers();
   assert.match(source, /fetch\("\.\/data\/catalog\.json"/);
   assert.match(source, /fetch\("\.\/data\/catalog-meta\.json"/);

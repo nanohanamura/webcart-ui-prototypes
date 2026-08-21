@@ -5,6 +5,7 @@
   const MAX_CART_QUANTITY = 99;
   const CART_STORAGE_VERSION = "v1";
   const numberFormat = new Intl.NumberFormat("ja-JP");
+  const fallbackStorageByOwner = new WeakMap();
 
   function text(value) {
     return value === null || value === undefined ? "" : String(value);
@@ -29,6 +30,23 @@
 
   function cartStorageKey(snapshotId) {
     return `nanohana-webcart-cart:${CART_STORAGE_VERSION}:${text(snapshotId)}`;
+  }
+
+  function createMemoryStorage() {
+    const values = new Map();
+    return {
+      getItem(key) { return values.has(text(key)) ? values.get(text(key)) : null; },
+      setItem(key, value) { values.set(text(key), text(value)); }
+    };
+  }
+
+  function resolveCartStorage(owner) {
+    try {
+      const storage = owner.localStorage;
+      if (storage && typeof storage.getItem === "function" && typeof storage.setItem === "function") return storage;
+    } catch (_) { /* A private-mode SecurityError is handled by the page-local fallback. */ }
+    if (!fallbackStorageByOwner.has(owner)) fallbackStorageByOwner.set(owner, createMemoryStorage());
+    return fallbackStorageByOwner.get(owner);
   }
 
   function setCartQuantity(cart, code, quantity) {
@@ -223,6 +241,14 @@
       <output aria-label="数量 ${quantity}">${quantity}</output>
       <button class="quantity-button" type="button" data-cart-action="increase" data-cart-code="${code}" data-cart-focus="${code}:increase" aria-label="${escapeHtml(product.SHOHINNM)}を1点増やす"${quantity >= MAX_CART_QUANTITY ? " disabled" : ""}>＋</button>
     </div>`;
+  }
+
+  function cartFocusKey(code, action, nextQuantity) {
+    const key = text(code);
+    if (!Number.isSafeInteger(nextQuantity) || nextQuantity <= 0) return `${key}:add`;
+    if (nextQuantity >= MAX_CART_QUANTITY) return `${key}:decrease`;
+    if (action === "add") return `${key}:increase`;
+    return `${key}:${action}`;
   }
 
   function productCard(product, cart = {}) {
@@ -482,8 +508,7 @@
         });
       }
 
-      const focusAction = nextQuantity === 0 ? "add" : (action === "remove" ? "add" : action);
-      const focusKey = `${code}:${focusAction}`;
+      const focusKey = cartFocusKey(code, action, nextQuantity);
       const focusTarget = Array.from(document.querySelectorAll("[data-cart-focus]")).find((node) => node.dataset.cartFocus === focusKey)
         || document.querySelector(".continue-shopping")
         || document.querySelector("#main");
@@ -494,7 +519,7 @@
     });
   }
 
-  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, escapeHtml };
+  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {
@@ -510,13 +535,14 @@
       .then(([catalog, meta]) => {
         const params = new URLSearchParams(location.search);
         const storageKey = cartStorageKey(catalog.snapshot_id);
-        const cart = loadCart(global.localStorage, storageKey, catalog);
+        const storage = resolveCartStorage(global);
+        const cart = loadCart(storage, storageKey, catalog);
         document.querySelector("#app").innerHTML = params.has("cart")
           ? renderCart(catalog, cart)
           : (params.has("product") ? renderDetail(catalog, meta, params.get("product"), cart) : renderCatalog(catalog, params, cart));
         bindCatalogEvents();
         bindImageErrors();
-        bindCartEvents(catalog, cart, global.localStorage, storageKey);
+        bindCartEvents(catalog, cart, storage, storageKey);
       })
       .catch(() => { document.querySelector("#app").innerHTML = '<main class="load-error"><h1>商品を読み込めませんでした</h1><p>時間をおいて、もう一度お試しください。</p></main>'; });
   }
