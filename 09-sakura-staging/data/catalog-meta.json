@@ -6,6 +6,64 @@
   ],
   "category_count": 56,
   "decode_warning_count": 14,
+  "decode_warning_products": [
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 398
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 399
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 408
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 427
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 463
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 465
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 494
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 499
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 2704
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 3468
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 3588
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 3589
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 3598
+    },
+    {
+      "field": "SHOSAISETSUMEI",
+      "product_code": 4970
+    }
+  ],
   "decode_warnings": [
     "products[26].SHOSAISETSUMEI",
     "products[27].SHOSAISETSUMEI",
@@ -22,7 +80,7 @@
     "products[725].SHOSAISETSUMEI",
     "products[838].SHOSAISETSUMEI"
   ],
-  "generated_at": "2026-08-21T15:40:25Z",
+  "generated_at": "2026-08-21T16:03:30Z",
   "hidden_null_price_count": 5,
   "listed_orphan_product_count": 9,
   "orphan_product_count": 159,
