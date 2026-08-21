@@ -98,21 +98,21 @@
   }
 
   function decodeWarningProductCodes(catalog, meta) {
+    if (!meta || !Array.isArray(meta.decode_warning_products)) return null;
     const codes = new Set();
     const products = Array.isArray(catalog && catalog.products) ? catalog.products : [];
-    const warnings = Array.isArray(meta && meta.decode_warnings) ? meta.decode_warnings : [];
-    warnings.forEach((warning) => {
-      const match = /^products\[(\d+)\]\.SHOSAISETSUMEI$/.exec(text(warning));
-      if (!match) return;
-      const index = Number(match[1]);
-      if (!Number.isSafeInteger(index) || index < 0 || index >= products.length) return;
-      const product = products[index];
-      if (product && product.SHOHINCD !== null && product.SHOHINCD !== undefined) codes.add(text(product.SHOHINCD));
-    });
+    const knownCodes = new Set(products.map((product) => text(product.SHOHINCD)));
+    for (const warning of meta.decode_warning_products) {
+      if (!warning || warning.field !== "SHOSAISETSUMEI") return null;
+      const code = text(warning.product_code);
+      if (!code || !knownCodes.has(code)) return null;
+      codes.add(code);
+    }
     return codes;
   }
 
   function safeDescription(product, warningCodes) {
+    if (!warningCodes || typeof warningCodes.has !== "function") return { status: "warning", text: "商品説明は確認中です" };
     if (warningCodes.has(text(product.SHOHINCD))) return { status: "warning", text: "商品説明は確認中です" };
     return { status: "normal", text: text(product.SHOSAISETSUMEI).trim() };
   }
@@ -247,7 +247,7 @@
     const panel = document.querySelector(".category-panel");
     const scrim = document.querySelector(".scrim");
     const categorySearch = panel?.querySelector("[data-category-search]");
-    const backgroundNodes = document.querySelectorAll(".site-header, #main, .bottom-nav");
+    const backgroundNodes = document.querySelectorAll(".skip-link, .site-header, #main, .bottom-nav");
     let drawerOrigin = null;
     const setBackgroundInert = (isOpen) => backgroundNodes.forEach((node) => node.toggleAttribute("inert", isOpen));
     const open = (origin) => {
@@ -276,10 +276,15 @@
       drawerOrigin?.focus();
       drawerOrigin = null;
     };
+    const isActuallyFocusable = (node) => {
+      if (node.hidden || node.disabled || node.closest("[hidden]")) return false;
+      const style = global.getComputedStyle(node);
+      return style.display !== "none" && style.visibility !== "hidden" && node.getClientRects().length > 0;
+    };
     const trapDrawerFocus = (event) => {
       if (event.key === "Escape") { event.preventDefault(); close(); return; }
       if (event.key !== "Tab") return;
-      const focusable = Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), [href]'));
+      const focusable = Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), [href]')).filter(isActuallyFocusable);
       if (!focusable.length) return;
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
@@ -320,13 +325,14 @@
 
   if (typeof document !== "undefined") {
     Promise.all([
-      fetch("./data/catalog.json", { cache: "no-store" }),
+      fetch("./data/catalog.json", { cache: "no-store" }).then((catalogResponse) => {
+        if (!catalogResponse.ok) throw new Error("catalog load failed");
+        return catalogResponse.json();
+      }),
       fetch("./data/catalog-meta.json", { cache: "no-store" })
+        .then((metaResponse) => metaResponse.ok ? metaResponse.json() : null)
+        .catch(() => null)
     ])
-      .then(async ([catalogResponse, metaResponse]) => {
-        if (!catalogResponse.ok || !metaResponse.ok) throw new Error("catalog load failed");
-        return [await catalogResponse.json(), await metaResponse.json()];
-      })
       .then(([catalog, meta]) => {
         const params = new URLSearchParams(location.search);
         document.querySelector("#app").innerHTML = params.has("product") ? renderDetail(catalog, meta, params.get("product")) : renderCatalog(catalog, params);

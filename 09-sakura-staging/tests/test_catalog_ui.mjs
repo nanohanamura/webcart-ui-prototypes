@@ -123,14 +123,18 @@ test("category drawer is modal, keyboard-contained, and restores page access on 
   assert.match(source, /role="dialog" aria-modal="true"[^>]*hidden inert/);
   assert.match(source, /event\.key === "Escape"/);
   assert.match(source, /event\.key !== "Tab"/);
+  assert.match(source, /\.skip-link, \.site-header, #main, \.bottom-nav/);
   assert.match(source, /backgroundNodes\.forEach/);
   assert.match(source, /node\.toggleAttribute\("inert", isOpen\)/);
   assert.match(source, /categorySearch\.focus\(\)/);
   assert.match(source, /drawerOrigin\?\.focus\(\)/);
+  assert.match(source, /filter\(isActuallyFocusable\)/);
+  assert.match(source, /getClientRects\(\)\.length > 0/);
+  assert.match(source, /node\.hidden \|\| node\.disabled \|\| node\.closest\("\[hidden\]"\)/);
 });
 
-test("decode-warning product descriptions are not shown as corrupted text", () => {
-  const { api } = loadHelpers();
+test("stable decode-warning product keys protect descriptions without using raw indexes", () => {
+  const { api, source } = loadHelpers();
   const warningCodes = api.decodeWarningProductCodes(catalog, catalogMeta);
   assert.equal(warningCodes.has("2704"), true);
   assert.equal(warningCodes.has("4970"), true);
@@ -147,6 +151,23 @@ test("decode-warning product descriptions are not shown as corrupted text", () =
   const warnedDetail = api.renderDetail(catalog, catalogMeta, "2704");
   assert.match(warnedDetail, /商品説明は確認中です/);
   assert.doesNotMatch(warnedDetail, /�/);
+  assert.match(source, /decode_warning_products/);
+  assert.doesNotMatch(source, /decode_warnings/);
+});
+
+test("missing warning metadata keeps the catalog usable and fails closed on descriptions", () => {
+  const { api, source } = loadHelpers();
+  const normal = catalog.products.find((product) => product.DELFLG === 0 && product.SHOSAISETSUMEI);
+  assert.equal(api.decodeWarningProductCodes(catalog, null), null);
+  assert.equal(api.safeDescription(normal, null).text, "商品説明は確認中です");
+  assert.match(api.renderDetail(catalog, null, String(normal.SHOHINCD)), /商品説明は確認中です/);
+  assert.match(source, /metaResponse\.ok \? metaResponse\.json\(\) : null/);
+  assert.match(source, /\.catch\(\(\) => null\)/);
+});
+
+test("search anchor clears the sticky header when scrolled into view", () => {
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /#word,\.search-form\s*\{[^}]*scroll-margin-top:\s*(?:9[0-9]|[1-9][0-9]{2,})px/s);
 });
 
 test("catalog task has no order, login, database, NILE, CSV, mail, or external write connection", () => {
