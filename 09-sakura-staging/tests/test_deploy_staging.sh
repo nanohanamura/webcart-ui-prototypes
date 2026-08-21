@@ -17,11 +17,19 @@ fail() {
 
 [ -x "$SCRIPT" ] || fail "deploy script is missing or not executable"
 
+HTACCESS="$ROOT/.htaccess"
+[ -f "$HTACCESS" ] || fail ".htaccess protection is missing"
+grep -F 'Options -Indexes' "$HTACCESS" >/dev/null || fail "directory listing is not disabled"
+grep -F '<FilesMatch "^(\.nanohana-webcart-prototype-managed|\.deploy-manifest\.tsv|\.htaccess)$">' "$HTACCESS" >/dev/null || fail "management deny scope is not exact"
+grep -F 'Require all denied' "$HTACCESS" >/dev/null || fail "Apache 2.4 deny is missing"
+grep -F 'Deny from all' "$HTACCESS" >/dev/null || fail "Apache 2.2 deny fallback is missing"
+
 dry_output=$("$SCRIPT" --dry-run)
 printf '%s\n' "$dry_output" | grep -F 'https://staging.nano87.com/webcart-prototype/' >/dev/null || fail "URL is not shown"
 printf '%s\n' "$dry_output" | grep -F '/home/nano87/www/staging/webcart-prototype' >/dev/null || fail "target is not shown"
 printf '%s\n' "$dry_output" | grep -F '公開ファイル数: 6' >/dev/null || fail "file count is not six"
-printf '%s\n' "$dry_output" | grep -F 'ローカルmanifest: path / size / sha256 を6件生成・確認済み' >/dev/null || fail "manifest is not confirmed"
+printf '%s\n' "$dry_output" | grep -F '配置構成: 公開アプリ6 + サーバー保護設定1 + 非公開管理2' >/dev/null || fail "protected deployment composition is not shown"
+printf '%s\n' "$dry_output" | grep -F 'ローカルmanifest: path / size / sha256 を7件生成・確認済み' >/dev/null || fail "manifest is not confirmed"
 printf '%s\n' "$dry_output" | grep -F '復元:' >/dev/null || fail "rollback is not shown"
 
 actual=$(printf '%s\n' "$dry_output" | sed -n 's/^  - //p')
@@ -66,7 +74,7 @@ chmod +x "$mock_dir/ssh" "$mock_dir/scp"
 DEPLOY_TEST_LOG="$log" PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null
 
 [ "$(grep -c '^ssh:' "$log")" -eq 2 ] || fail "successful execute must use prepare and finalize remote phases"
-[ "$(grep -c '^scp:' "$log")" -eq 8 ] || fail "execute must upload six public and two management files"
+[ "$(grep -c '^scp:' "$log")" -eq 9 ] || fail "execute must upload six public, one protection and two management files"
 if grep -E '(\.env|tests/|scripts/|docs/|07-|08-|\.DS_Store)' "$log" >/dev/null; then
   fail "forbidden path reached upload commands"
 fi

@@ -22,4 +22,4 @@
 
 初回は配置先が空いている場合だけ新規作成します。更新は、このスクリプトが残した管理markerとremote manifestの両方が一致する場合だけ許可します。更新前の版は `/home/nano87/codex-backups/webcart-prototype-UTC日時/` へ退避し、切り替えに失敗した場合は直前版を元の配置先へ戻します。並行配置は固定lockで拒否し、中断時は今回のstageだけを清掃します。
 
-公開先は `https://staging.nano87.com/webcart-prototype/` です。`tests/`、`scripts/`、README、`.env`、dotfile、試作07・08は配置対象に含めません。管理markerとremote manifestだけは、更新時の所有確認と転送検証のため配置先内に保持します。
+公開先は `https://staging.nano87.com/webcart-prototype/` です。`tests/`、`scripts/`、README、`.env`、試作07・08は配置対象に含めません。配置構成は公開アプリ6ファイル、サーバー保護設定`.htaccess`、非公開管理2ファイルです。管理markerとremote manifestは更新時の所有確認と転送検証のため配置先内に保持しますが、`.htaccess`で3ファイルすべてのHTTPアクセスとディレクトリ一覧を拒否します。

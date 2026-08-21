@@ -86,19 +86,25 @@ marker_token_of() {
 
 verify_manifest() {
   dir=$1
+  policy=${2:-legacy-ok}
   manifest_file="$dir/$MANIFEST"
   [ -f "$manifest_file" ] || die "remote manifest is missing"
   [ ! -L "$manifest_file" ] || die "remote manifest must not be a symlink"
-  [ "$(wc -l <"$manifest_file" | tr -d ' ')" = 6 ] || die "remote manifest file count differs"
+  manifest_count=$(wc -l <"$manifest_file" | tr -d ' ')
+  case "$manifest_count:$policy" in
+    7:*) tree_count=9 ;;
+    6:legacy-ok) tree_count=8 ;;
+    *) die "remote manifest file count differs" ;;
+  esac
   [ "$(find "$dir" -type l | wc -l | tr -d ' ')" = 0 ] || die "symlink is not allowed"
-  [ "$(find "$dir" -type f | wc -l | tr -d ' ')" = 8 ] || die "remote tree contains unexpected files"
+  [ "$(find "$dir" -type f | wc -l | tr -d ' ')" = "$tree_count" ] || die "remote tree contains unexpected files"
 
   tab=$(printf '\t')
   line_no=0
   while IFS="$tab" read -r rel expected_size expected_sha extra; do
     line_no=$((line_no + 1))
     case "$line_no:$rel" in
-      1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json) ;;
+      1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:.htaccess) ;;
       *) die "remote manifest path or order differs" ;;
     esac
     [ -z "${extra:-}" ] || die "remote manifest has an extra field"
@@ -113,7 +119,7 @@ verify_manifest() {
     [ "$(file_size "$file")" = "$expected_size" ] || die "remote file size differs: $rel"
     [ "$(file_sha256 "$file")" = "$expected_sha" ] || die "remote file SHA-256 differs: $rel"
   done <"$manifest_file"
-  [ "$line_no" -eq 6 ] || die "remote manifest was not fully read"
+  [ "$line_no" -eq "$manifest_count" ] || die "remote manifest was not fully read"
 }
 
 lock_owned() {
@@ -265,7 +271,7 @@ case "$operation" in
 
     [ -d "$stage_fs" ] || die "stage directory is missing"
     verify_marker "$stage_fs" "$token"
-    verify_manifest "$stage_fs"
+    verify_manifest "$stage_fs" current
     case "$expected_marker_size" in ''|*[!0-9]*) die "managed marker size expectation is invalid" ;; esac
     case "$expected_manifest_size" in ''|*[!0-9]*) die "manifest size expectation is invalid" ;; esac
     case "$expected_marker_sha" in ''|*[!0-9a-fA-F]*) die "managed marker SHA-256 expectation is invalid" ;; esac

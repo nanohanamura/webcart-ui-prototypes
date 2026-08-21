@@ -51,7 +51,7 @@ fill_stage() {
   token=$2
   stage_fs=$(mapped "$stage")
   mkdir -p "$stage_fs/assets" "$stage_fs/data"
-  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json; do
+  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json .htaccess; do
     cp "$ROOT/$rel" "$stage_fs/$rel"
   done
   printf 'nanohana-webcart-prototype-v1\ntarget=%s\ndeployment=%s\n' "$TARGET" "$token" >"$stage_fs/$MARKER"
@@ -62,7 +62,7 @@ write_manifest() {
   stage=$1
   stage_fs=$(mapped "$stage")
   : >"$stage_fs/$MANIFEST"
-  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json; do
+  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json .htaccess; do
     printf '%s\t%s\t%s\n' "$rel" "$(size_file "$stage_fs/$rel")" "$(sha256_file "$stage_fs/$rel")" >>"$stage_fs/$MANIFEST"
   done
 }
@@ -94,6 +94,18 @@ deploy_initial "$stage" "$backup" "$TOKEN"
 [ -f "$(mapped "$TARGET/$MANIFEST")" ] || fail "initial deployment manifest is missing"
 [ ! -e "$(mapped "$LOCK")" ] || fail "initial deployment left the lock"
 [ "$(run_ops status "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$TOKEN")" = COMMITTED ] || fail "committed status was not detected"
+
+reset_remote legacy_update
+deploy_initial "$TARGET.stage-legacy-old" "$BACKUP_ROOT/webcart-prototype-legacy-old" legacy-old
+rm "$(mapped "$TARGET/.htaccess")"
+sed '$d' "$(mapped "$TARGET/$MANIFEST")" >"$temp/legacy-manifest"
+mv "$temp/legacy-manifest" "$(mapped "$TARGET/$MANIFEST")"
+legacy_stage="$TARGET.stage-legacy-new"
+legacy_backup="$BACKUP_ROOT/webcart-prototype-legacy-new"
+run_ops prepare "$TARGET" "$legacy_stage" "$BACKUP_ROOT" "$legacy_backup" "$LOCK" legacy-new
+fill_stage "$legacy_stage" legacy-new
+finalize_stage "$legacy_stage" "$legacy_backup" legacy-new
+[ -f "$(mapped "$TARGET/.htaccess")" ] || fail "legacy managed target did not upgrade to protected layout"
 
 if run_ops status "$TARGET" "$TARGET.stage-wrong" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-$TOKEN" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
   fail "stage not derived from token was accepted"

@@ -14,6 +14,8 @@ assets/app.js
 assets/styles.css
 data/catalog.json
 data/catalog-meta.json'
+DEPLOY_FILES="$PUBLIC_FILES
+.htaccess"
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 REMOTE_OPS="$ROOT/scripts/deploy_staging_remote.sh"
@@ -64,7 +66,7 @@ preflight() {
     echo "リモート配置手順がありません。配置を停止します。" >&2
     exit 1
   }
-  printf '%s\n' "$PUBLIC_FILES" | while IFS= read -r rel; do
+  printf '%s\n' "$DEPLOY_FILES" | while IFS= read -r rel; do
     [ -f "$ROOT/$rel" ] || {
       echo "公開対象がありません: $rel" >&2
       exit 1
@@ -75,6 +77,10 @@ preflight() {
   grep -F '<meta name="robots" content="noindex,nofollow">' "$ROOT/manager-review.html" >/dev/null
   grep -F '実際の注文・ログイン・送信は行いません' "$ROOT/assets/app.js" >/dev/null
   grep -F '実際の注文・ログイン・送信は行いません' "$ROOT/manager-review.html" >/dev/null
+  grep -F 'Options -Indexes' "$ROOT/.htaccess" >/dev/null
+  grep -F '<FilesMatch "^(\.nanohana-webcart-prototype-managed|\.deploy-manifest\.tsv|\.htaccess)$">' "$ROOT/.htaccess" >/dev/null
+  grep -F 'Require all denied' "$ROOT/.htaccess" >/dev/null
+  grep -F 'Deny from all' "$ROOT/.htaccess" >/dev/null
 
   if grep -E 'XMLHttpRequest|sendBeacon|WebSocket|<form[^>]+action[[:space:]]*=|formaction[[:space:]]*=|[.]php\b|mailto:|tel:' \
     "$ROOT/index.html" "$ROOT/manager-review.html" "$ROOT/assets/app.js" >/dev/null; then
@@ -108,7 +114,7 @@ PY
 create_manifest() {
   manifest=$1
   : >"$manifest"
-  printf '%s\n' "$PUBLIC_FILES" | while IFS= read -r rel; do
+  printf '%s\n' "$DEPLOY_FILES" | while IFS= read -r rel; do
     size=$(file_size "$ROOT/$rel")
     sha=$(file_sha256 "$ROOT/$rel")
     printf '%s\t%s\t%s\n' "$rel" "$size" "$sha" >>"$manifest"
@@ -145,12 +151,13 @@ marker_size=$(file_size "$marker_file")
 marker_sha=$(file_sha256 "$marker_file")
 manifest_size=$(file_size "$manifest")
 manifest_sha=$(file_sha256 "$manifest")
-[ "$(wc -l <"$manifest" | tr -d ' ')" = 6 ] || {
+[ "$(wc -l <"$manifest" | tr -d ' ')" = 7 ] || {
   echo "配置manifestの件数が一致しません。" >&2
   exit 1
 }
 print_plan
-echo "ローカルmanifest: path / size / sha256 を6件生成・確認済み"
+echo "配置構成: 公開アプリ6 + サーバー保護設定1 + 非公開管理2"
+echo "ローカルmanifest: path / size / sha256 を7件生成・確認済み"
 
 [ "$MODE" = '--execute' ] || {
   echo "dry-run: サーバー変更は行っていません。"
@@ -195,6 +202,7 @@ remote_prepared=1
 printf '%s\n' "$PUBLIC_FILES" | while IFS= read -r rel; do
   scp -p "$ROOT/$rel" "$REMOTE_HOST:$stage/$rel"
 done
+scp -p "$ROOT/.htaccess" "$REMOTE_HOST:$stage/.htaccess"
 scp -p "$marker_file" "$REMOTE_HOST:$stage/$MARKER"
 scp -p "$manifest" "$REMOTE_HOST:$stage/$REMOTE_MANIFEST"
 
