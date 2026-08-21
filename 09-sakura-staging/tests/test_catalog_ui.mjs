@@ -44,8 +44,9 @@ test("only DELFLG zero products are listed and all categories stay available", (
   const listed = api.listedProducts(catalog.products);
   assert.equal(listed.length, 621);
   assert.ok(listed.every((product) => product.DELFLG === 0));
-  assert.equal(catalog.categories.length, 56);
-  assert.equal(api.categoriesWithCounts(catalog.categories, listed).length, 56);
+  assert.equal(catalog.categories.length, 55);
+  assert.equal(catalog.categories.length, catalogMeta.category_count);
+  assert.equal(api.categoriesWithCounts(catalog.categories, listed).length, 55);
 });
 
 test("search prioritizes exact product code and also finds names and specifications", () => {

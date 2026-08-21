@@ -536,16 +536,6 @@
       "GAZOFILENM": null,
       "HYOJIKIGEN": null,
       "OTODOKEYOTEIBI": null,
-      "SHOHINBUNRUICD": 12,
-      "SHOHINBUNRUISUBTITLE": "分類コード 12",
-      "SHOHINBUNRUITITLE": "分類名未登録"
-    },
-    {
-      "CHUMONSHIMEKIRIBI": null,
-      "COMMENT": "",
-      "GAZOFILENM": null,
-      "HYOJIKIGEN": null,
-      "OTODOKEYOTEIBI": null,
       "SHOHINBUNRUICD": 90,
       "SHOHINBUNRUISUBTITLE": "分類コード 90",
       "SHOHINBUNRUITITLE": "分類名未登録"
@@ -12984,5 +12974,5 @@
     }
   ],
   "schema_version": 2,
-  "snapshot_id": "sha256:8b8c01972fb91fa01788a32ccccd22b502e975397c5201ab59bdd297dbd2ed97"
+  "snapshot_id": "sha256:01946375293b85542b01a6dda6bd9c1986c9ad346fb06eaf6c5b5aa0ca22840a"
 }
