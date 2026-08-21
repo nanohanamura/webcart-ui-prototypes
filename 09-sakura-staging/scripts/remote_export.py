@@ -43,6 +43,10 @@ CATEGORY_SQL = (
 )
 
 
+class CatalogTextDecodeError(ValueError):
+    """A catalog field could not be decoded without exposing its value."""
+
+
 def _decode_legacy_text(value):
     if isinstance(value, str):
         raw = value.encode(BYTE_PRESERVING_ENCODING)
@@ -73,17 +77,33 @@ def _json_value(value):
     raise TypeError("unsupported database value type: %s" % type(value).__name__)
 
 
-def _fetch_rows(cursor, sql, columns):
+def _safe_json_value(value, collection, row_index, column):
+    try:
+        return _json_value(value)
+    except UnicodeError:
+        raise CatalogTextDecodeError(
+            "catalog text decode failed at %s[%d].%s" %
+            (collection, row_index, column)
+        ) from None
+
+
+def _fetch_rows(cursor, sql, columns, collection):
     cursor.execute(sql)
     rows = cursor.fetchall()
     output = []
-    for row in rows:
+    for row_index, row in enumerate(rows):
         if isinstance(row, dict):
-            output.append({name: _json_value(row[name]) for name in columns})
+            output.append({
+                name: _safe_json_value(row[name], collection, row_index, name)
+                for name in columns
+            })
         else:
             if len(row) != len(columns):
                 raise RuntimeError("database row did not match the fixed column contract")
-            output.append({name: _json_value(value) for name, value in zip(columns, row)})
+            output.append({
+                name: _safe_json_value(value, collection, row_index, name)
+                for name, value in zip(columns, row)
+            })
     return output
 
 
@@ -103,8 +123,12 @@ def export_catalog(core):
     cursor = None
     try:
         cursor = connection.cursor()
-        products = _fetch_rows(cursor, PRODUCT_SQL, PRODUCT_COLUMNS)
-        categories = _fetch_rows(cursor, CATEGORY_SQL, CATEGORY_COLUMNS)
+        products = _fetch_rows(
+            cursor, PRODUCT_SQL, PRODUCT_COLUMNS, "products"
+        )
+        categories = _fetch_rows(
+            cursor, CATEGORY_SQL, CATEGORY_COLUMNS, "categories"
+        )
         return {
             "schema_version": 1,
             "counts": {

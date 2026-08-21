@@ -312,6 +312,76 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual([], result["products"])
         self.assertEqual([], result["categories"])
 
+    def test_remote_export_reports_only_safe_field_location_on_decode_failure(self):
+        bad_value = b"abcde\xec".decode("latin1")
+        good_product = (
+            501, "item", 280, 44, 1, 0, 1, 0, 0,
+            "detail", "spec", None, None, 0,
+            datetime.datetime(2026, 8, 22, 9, 0),
+            datetime.datetime(2026, 8, 22, 9, 0),
+        )
+        good_category = (44, "title", "subtitle", "comment", None, None, None, None)
+
+        for collection, column, product_rows, category_rows in (
+            (
+                "products", "SHOHINNM",
+                [(good_product[0], bad_value) + good_product[2:]],
+                [good_category],
+            ),
+            (
+                "categories", "COMMENT",
+                [good_product],
+                [good_category[:3] + (bad_value,) + good_category[4:]],
+            ),
+        ):
+            with self.subTest(collection=collection):
+                class FakeCursor:
+                    current_sql = None
+
+                    def execute(self, sql):
+                        self.current_sql = sql
+
+                    def fetchall(self):
+                        if self.current_sql == remote_export.PRODUCT_SQL:
+                            return product_rows
+                        return category_rows
+
+                    def close(self):
+                        pass
+
+                class FakeConnection:
+                    encoding = "euc_jp"
+
+                    @staticmethod
+                    def cursor():
+                        return FakeCursor()
+
+                    @staticmethod
+                    def close():
+                        pass
+
+                class FakeCore:
+                    @staticmethod
+                    def default_env_path():
+                        return "/unused/.env"
+
+                    @staticmethod
+                    def load_env(_path):
+                        return {}
+
+                    @staticmethod
+                    def connect(_env):
+                        return FakeConnection()
+
+                with self.assertRaises(ValueError) as raised:
+                    remote_export.export_catalog(FakeCore())
+
+                self.assertEqual(
+                    "catalog text decode failed at %s[0].%s" % (collection, column),
+                    str(raised.exception),
+                )
+                self.assertNotIn(bad_value, str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
