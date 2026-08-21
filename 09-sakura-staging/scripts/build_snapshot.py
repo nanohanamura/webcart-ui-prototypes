@@ -160,15 +160,47 @@ def validate_payload(payload):
         raise SnapshotValidationError("declared category count does not match rows")
 
 
-def _write_json_atomic(path, value):
+def _json_bytes(value):
+    return (
+        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+
+
+def _stage_bytes(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
     )
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(value)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return temporary_name
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _existing_bytes(path):
+    try:
+        return path.read_bytes()
+    except FileNotFoundError:
+        return None
+
+
+def _restore_file(path, previous):
+    if previous is None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    temporary_name = _stage_bytes(path, previous)
+    try:
         os.replace(temporary_name, str(path))
     except Exception:
         try:
@@ -178,14 +210,61 @@ def _write_json_atomic(path, value):
         raise
 
 
+def _publish_json_pair(catalog_path, catalog, meta_path, meta):
+    previous_catalog = _existing_bytes(catalog_path)
+    previous_meta = _existing_bytes(meta_path)
+    staged_catalog = _stage_bytes(catalog_path, _json_bytes(catalog))
+    try:
+        staged_meta = _stage_bytes(meta_path, _json_bytes(meta))
+    except Exception:
+        os.unlink(staged_catalog)
+        raise
+
+    try:
+        os.replace(staged_catalog, str(catalog_path))
+        staged_catalog = None
+        os.replace(staged_meta, str(meta_path))
+        staged_meta = None
+    except Exception as publish_error:
+        for temporary_name in (staged_catalog, staged_meta):
+            if temporary_name is not None:
+                try:
+                    os.unlink(temporary_name)
+                except FileNotFoundError:
+                    pass
+        rollback_errors = []
+        for path, previous in (
+            (catalog_path, previous_catalog),
+            (meta_path, previous_meta),
+        ):
+            try:
+                _restore_file(path, previous)
+            except Exception as rollback_error:
+                rollback_errors.append(rollback_error)
+        if rollback_errors:
+            raise RuntimeError(
+                "catalog pair update failed and rollback was incomplete"
+            ) from publish_error
+        raise
+
+
 def build_snapshot(payload, output_dir):
     validate_payload(payload)
     products = []
-    for source in payload["products"]:
+    ordered_products = sorted(
+        payload["products"],
+        key=lambda row: (row["NARABIJUN"], row["SHOHINCD"]),
+    )
+    for source in ordered_products:
         item = dict(source)
         item["image_url"], item["thumbnail_url"] = _image_urls(item["GAZOFILENM"])
         products.append(item)
-    categories = [dict(source) for source in payload["categories"]]
+    categories = [
+        dict(source)
+        for source in sorted(
+            payload["categories"], key=lambda row: row["SHOHINBUNRUICD"]
+        )
+    ]
 
     catalog = {
         "schema_version": SCHEMA_VERSION,
@@ -204,8 +283,12 @@ def build_snapshot(payload, output_dir):
         "visibility_contract": "UI displays only products where DELFLG == 0",
     }
     output_dir = Path(output_dir)
-    _write_json_atomic(output_dir / "catalog.json", catalog)
-    _write_json_atomic(output_dir / "catalog-meta.json", meta)
+    _publish_json_pair(
+        output_dir / "catalog.json",
+        catalog,
+        output_dir / "catalog-meta.json",
+        meta,
+    )
     return meta
 
 

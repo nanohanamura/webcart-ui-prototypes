@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,6 +129,92 @@ class SnapshotContractTests(unittest.TestCase):
         data["schema_version"] = True
         self.assert_rejected(data, "schema_version")
 
+    def test_pair_update_failure_restores_the_previous_catalog_and_meta(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            build_snapshot.build_snapshot(payload(), output_dir)
+            old_catalog = (output_dir / "catalog.json").read_bytes()
+            old_meta = (output_dir / "catalog-meta.json").read_bytes()
+
+            changed = payload()
+            changed["products"][0]["SHOHINNM"] = "変更後の商品名"
+            real_replace = build_snapshot.os.replace
+            calls = 0
+
+            def fail_second_replace(source, destination):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    raise OSError("injected second-file failure")
+                return real_replace(source, destination)
+
+            with mock.patch.object(
+                build_snapshot.os, "replace", side_effect=fail_second_replace
+            ):
+                with self.assertRaisesRegex(OSError, "injected second-file failure"):
+                    build_snapshot.build_snapshot(changed, output_dir)
+
+            self.assertEqual(old_catalog, (output_dir / "catalog.json").read_bytes())
+            self.assertEqual(old_meta, (output_dir / "catalog-meta.json").read_bytes())
+
+    def test_rollback_failure_does_not_leave_staged_temp_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            build_snapshot.build_snapshot(payload(), output_dir)
+            changed = payload()
+            changed["products"][0]["SHOHINNM"] = "変更後の商品名"
+            real_replace = build_snapshot.os.replace
+            calls = 0
+
+            def fail_publish_and_first_rollback(source, destination):
+                nonlocal calls
+                calls += 1
+                if calls in (2, 3):
+                    raise OSError("injected replacement failure")
+                return real_replace(source, destination)
+
+            with mock.patch.object(
+                build_snapshot.os,
+                "replace",
+                side_effect=fail_publish_and_first_rollback,
+            ):
+                with self.assertRaisesRegex(RuntimeError, "rollback was incomplete"):
+                    build_snapshot.build_snapshot(changed, output_dir)
+
+            self.assertEqual([], list(output_dir.glob("*.tmp")))
+
+    def test_reversed_input_produces_the_same_deterministic_catalog(self):
+        ordered = payload()
+        ordered["categories"].append({
+            "SHOHINBUNRUICD": 45,
+            "SHOHINBUNRUITITLE": "米",
+            "SHOHINBUNRUISUBTITLE": "",
+            "COMMENT": "",
+            "GAZOFILENM": None,
+            "CHUMONSHIMEKIRIBI": None,
+            "OTODOKEYOTEIBI": None,
+            "HYOJIKIGEN": None,
+        })
+        later = product(503, category=45, image="0503.jpg")
+        later["NARABIJUN"] = 0
+        ordered["products"].append(later)
+        ordered["counts"] = {"products": 3, "categories": 2}
+
+        reversed_input = json.loads(json.dumps(ordered, ensure_ascii=False))
+        reversed_input["products"].reverse()
+        reversed_input["categories"].reverse()
+
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            build_snapshot.build_snapshot(ordered, Path(first))
+            build_snapshot.build_snapshot(reversed_input, Path(second))
+            first_catalog = (Path(first) / "catalog.json").read_bytes()
+            second_catalog = (Path(second) / "catalog.json").read_bytes()
+            catalog = json.loads(first_catalog)
+
+        self.assertEqual(first_catalog, second_catalog)
+        self.assertEqual([503, 501, 502], [row["SHOHINCD"] for row in catalog["products"]])
+        self.assertEqual([44, 45], [row["SHOHINBUNRUICD"] for row in catalog["categories"]])
+
     def test_remote_export_contains_only_fixed_select_sql(self):
         statements = (remote_export.PRODUCT_SQL, remote_export.CATEGORY_SQL)
         self.assertTrue(all(sql.lstrip().upper().startswith("SELECT ") for sql in statements))
@@ -136,6 +223,12 @@ class SnapshotContractTests(unittest.TestCase):
             self.assertNotIn(forbidden, combined)
         self.assertEqual(tuple(PRODUCT_COLUMNS), remote_export.PRODUCT_COLUMNS)
         self.assertNotIn("*", combined)
+        self.assertTrue(
+            remote_export.PRODUCT_SQL.endswith("ORDER BY NARABIJUN, SHOHINCD")
+        )
+        self.assertTrue(
+            remote_export.CATEGORY_SQL.endswith("ORDER BY SHOHINBUNRUICD")
+        )
 
     def test_remote_export_does_not_name_customer_member_order_or_payment_tables(self):
         source = (SCRIPTS / "remote_export.py").read_text(encoding="utf-8").upper()
