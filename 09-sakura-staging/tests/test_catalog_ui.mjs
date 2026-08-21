@@ -181,6 +181,38 @@ test("warning metadata is trusted only when both files share one valid snapshot 
   assert.doesNotMatch(mismatchedDetail, new RegExp(normal.SHOSAISETSUMEI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
+test("warning metadata count and unique stable keys must be internally consistent", () => {
+  const { api } = loadHelpers();
+  const mismatch = { ...catalogMeta, decode_warning_count: catalogMeta.decode_warning_count + 1 };
+  assert.equal(api.decodeWarningProductCodes(catalog, mismatch), null);
+
+  const duplicate = {
+    ...catalogMeta,
+    decode_warning_count: catalogMeta.decode_warning_count + 1,
+    decode_warning_products: [...catalogMeta.decode_warning_products, { ...catalogMeta.decode_warning_products[0] }]
+  };
+  assert.equal(api.decodeWarningProductCodes(catalog, duplicate), null);
+
+  assert.equal(api.decodeWarningProductCodes(catalog, { ...catalogMeta, decode_warning_count: -1 }), null);
+  const missingCount = { ...catalogMeta };
+  delete missingCount.decode_warning_count;
+  assert.equal(api.decodeWarningProductCodes(catalog, missingCount), null);
+});
+
+test("replacement characters in a description always fail closed even when metadata reports no warnings", () => {
+  const { api } = loadHelpers();
+  const product = catalog.products.find((item) => item.DELFLG === 0 && item.SHOSAISETSUMEI);
+  const corrupted = { ...product, SHOSAISETSUMEI: `説明の途中�で文字化け` };
+  const noWarnings = new Set();
+  assert.equal(api.safeDescription(corrupted, noWarnings).text, "商品説明は確認中です");
+  assert.doesNotMatch(api.safeDescription(corrupted, noWarnings).text, /�/);
+
+  const zeroWarningMeta = { ...catalogMeta, decode_warning_count: 0, decode_warning_products: [] };
+  const emptyWarnings = api.decodeWarningProductCodes(catalog, zeroWarningMeta);
+  assert.equal(emptyWarnings.size, 0);
+  assert.equal(api.safeDescription(corrupted, emptyWarnings).status, "warning");
+});
+
 test("missing warning metadata keeps the catalog usable and fails closed on descriptions", () => {
   const { api, source } = loadHelpers();
   const normal = catalog.products.find((product) => product.DELFLG === 0 && product.SHOSAISETSUMEI);

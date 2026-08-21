@@ -108,22 +108,29 @@
 
   function decodeWarningProductCodes(catalog, meta) {
     if (!snapshotMetadataMatches(catalog, meta) || !Array.isArray(meta.decode_warning_products)) return null;
+    if (!Number.isSafeInteger(meta.decode_warning_count) || meta.decode_warning_count < 0 || meta.decode_warning_count !== meta.decode_warning_products.length) return null;
     const codes = new Set();
+    const stableKeys = new Set();
     const products = Array.isArray(catalog && catalog.products) ? catalog.products : [];
     const knownCodes = new Set(products.map((product) => text(product.SHOHINCD)));
     for (const warning of meta.decode_warning_products) {
       if (!warning || warning.field !== "SHOSAISETSUMEI") return null;
       const code = text(warning.product_code);
       if (!code || !knownCodes.has(code)) return null;
+      const stableKey = `${code}\u0000${warning.field}`;
+      if (stableKeys.has(stableKey)) return null;
+      stableKeys.add(stableKey);
       codes.add(code);
     }
     return codes;
   }
 
   function safeDescription(product, warningCodes) {
+    const description = text(product.SHOSAISETSUMEI).trim();
+    if (description.includes("\uFFFD")) return { status: "warning", text: "商品説明は確認中です" };
     if (!warningCodes || typeof warningCodes.has !== "function") return { status: "warning", text: "商品説明は確認中です" };
     if (warningCodes.has(text(product.SHOHINCD))) return { status: "warning", text: "商品説明は確認中です" };
-    return { status: "normal", text: text(product.SHOSAISETSUMEI).trim() };
+    return { status: "normal", text: description };
   }
 
   function temperatureLabel(value) {
