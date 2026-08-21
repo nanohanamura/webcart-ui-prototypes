@@ -296,8 +296,23 @@ def _synthesized_category(code):
     }
 
 
+def _stable_decode_warning_products(payload):
+    warnings = []
+    for warning in payload["decode_warnings"]:
+        match = DECODE_WARNING_PATTERN.fullmatch(warning)
+        product = payload["products"][int(match.group(1))]
+        warnings.append({
+            "product_code": product["SHOHINCD"],
+            "field": match.group(2),
+        })
+    return sorted(
+        warnings, key=lambda item: (item["product_code"], item["field"])
+    )
+
+
 def build_snapshot(payload, output_dir):
     validate_payload(payload)
+    decode_warning_products = _stable_decode_warning_products(payload)
     products = []
     ordered_products = sorted(
         payload["products"],
@@ -345,6 +360,7 @@ def build_snapshot(payload, output_dir):
         "visibility_contract": "UI displays only products where DELFLG == 0",
         "decode_warning_count": len(payload["decode_warnings"]),
         "decode_warnings": list(payload["decode_warnings"]),
+        "decode_warning_products": decode_warning_products,
         "hidden_null_price_count": sum(
             1
             for item in products

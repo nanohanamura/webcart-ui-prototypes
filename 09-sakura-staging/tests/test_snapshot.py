@@ -200,7 +200,40 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(
             ["products[0].SHOSAISETSUMEI"], meta["decode_warnings"]
         )
+        self.assertIn("decode_warning_products", meta)
+        self.assertEqual(
+            [{"product_code": 501, "field": "SHOSAISETSUMEI"}],
+            meta["decode_warning_products"],
+        )
         self.assertNotIn("説明の末尾", meta_text)
+
+    def test_decode_warning_product_mapping_is_stable_when_input_order_changes(self):
+        first_payload = payload()
+        first_payload["products"][0]["SHOSAISETSUMEI"] = "説明�"
+        first_payload["decode_warnings"] = ["products[0].SHOSAISETSUMEI"]
+
+        reversed_payload = json.loads(json.dumps(first_payload, ensure_ascii=False))
+        reversed_payload["products"].reverse()
+        reversed_payload["decode_warnings"] = ["products[1].SHOSAISETSUMEI"]
+
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            build_snapshot.build_snapshot(first_payload, Path(first))
+            build_snapshot.build_snapshot(reversed_payload, Path(second))
+            first_catalog = (Path(first) / "catalog.json").read_bytes()
+            second_catalog = (Path(second) / "catalog.json").read_bytes()
+            first_meta = json.loads(
+                (Path(first) / "catalog-meta.json").read_text(encoding="utf-8")
+            )
+            second_meta = json.loads(
+                (Path(second) / "catalog-meta.json").read_text(encoding="utf-8")
+            )
+
+        expected = [{"product_code": 501, "field": "SHOSAISETSUMEI"}]
+        self.assertEqual(first_catalog, second_catalog)
+        self.assertIn("decode_warning_products", first_meta)
+        self.assertEqual(expected, first_meta["decode_warning_products"])
+        self.assertEqual(expected, second_meta["decode_warning_products"])
+        self.assertNotEqual(first_meta["decode_warnings"], second_meta["decode_warnings"])
 
     def test_decode_warnings_reject_malformed_forbidden_duplicate_and_out_of_range(self):
         invalid_warnings = (
