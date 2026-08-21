@@ -44,6 +44,10 @@ cat >"$mock_dir/ssh" <<'MOCK'
 #!/bin/sh
 cat >/dev/null
 printf 'ssh:%s\n' "$*" >>"$DEPLOY_TEST_LOG"
+case "$*" in
+  *' -- status '*) printf '%s\n' "${DEPLOY_TEST_STATUS:-ACTIVE}" ;;
+  *' -- finalize '*) [ "${DEPLOY_TEST_FAIL_FINALIZE:-0}" != 1 ] || exit 10 ;;
+esac
 MOCK
 cat >"$mock_dir/scp" <<'MOCK'
 #!/bin/sh
@@ -72,7 +76,35 @@ rm -f "$log.scp-count"
 if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_SCP_AT=3 PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null 2>&1; then
   fail "partial scp failure was accepted"
 fi
-[ "$(grep -c '^ssh:' "$log")" -eq 2 ] || fail "partial scp must call prepare and abort"
+[ "$(grep -c '^ssh:' "$log")" -eq 3 ] || fail "partial scp must call prepare, status and abort"
 [ "$(grep -c '^scp:' "$log")" -eq 3 ] || fail "partial scp failure did not stop immediately"
+
+: >"$log"
+rm -f "$log.scp-count"
+if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=ALREADY_ROLLED_BACK PATH="$mock_dir:$PATH" \
+  "$SCRIPT" --execute >"$mock_dir/rolled.out" 2>"$mock_dir/rolled.err"; then
+  fail "uncertain finalize unexpectedly returned success"
+fi
+if grep -F '警告:' "$mock_dir/rolled.err" >/dev/null; then
+  fail "already rolled back state produced a false warning"
+fi
+
+: >"$log"
+rm -f "$log.scp-count"
+if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=COMMITTED PATH="$mock_dir:$PATH" \
+  "$SCRIPT" --execute >"$mock_dir/committed.out" 2>"$mock_dir/committed.err"; then
+  fail "uncertain committed finalize unexpectedly returned success"
+fi
+if grep -F '警告:' "$mock_dir/committed.err" >/dev/null; then
+  fail "committed state produced a false warning"
+fi
+
+: >"$log"
+rm -f "$log.scp-count"
+if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=UNKNOWN PATH="$mock_dir:$PATH" \
+  "$SCRIPT" --execute >"$mock_dir/unknown.out" 2>"$mock_dir/unknown.err"; then
+  fail "unknown finalize unexpectedly returned success"
+fi
+grep -F '配置状態を確定できません' "$mock_dir/unknown.err" >/dev/null || fail "unknown state was not explicit"
 
 echo "deploy staging tests: ok"

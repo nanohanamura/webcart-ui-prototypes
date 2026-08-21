@@ -134,10 +134,13 @@ trap 'rm -rf "$tmp_dir"' 0
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+stamp=$(date -u '+%Y%m%dT%H%M%SZ')
+random_part=$(basename "$tmp_dir" | tr -cd 'A-Za-z0-9._-')
+token="$stamp-$$-$random_part"
 manifest="$tmp_dir/manifest.tsv"
 marker_file="$tmp_dir/managed-marker"
 create_manifest "$manifest"
-printf 'nanohana-webcart-prototype-v1\ntarget=%s\n' "$TARGET" >"$marker_file"
+printf 'nanohana-webcart-prototype-v1\ntarget=%s\ndeployment=%s\n' "$TARGET" "$token" >"$marker_file"
 marker_size=$(file_size "$marker_file")
 marker_sha=$(file_sha256 "$marker_file")
 manifest_size=$(file_size "$manifest")
@@ -155,10 +158,7 @@ echo "ローカルmanifest: path / size / sha256 を6件生成・確認済み"
   exit 0
 }
 
-stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-random_part=$(basename "$tmp_dir" | tr -cd 'A-Za-z0-9._-')
-token="$stamp-$$-$random_part"
-stage="/home/nano87/www/staging/.webcart-prototype-stage-$token"
+stage="$TARGET.stage-$token"
 backup="$BACKUP_ROOT/webcart-prototype-$token"
 remote_prepared=0
 deployment_complete=0
@@ -167,8 +167,18 @@ cleanup() {
   rc=$?
   trap - 0 HUP INT TERM
   if [ "$remote_prepared" -eq 1 ] && [ "$deployment_complete" -ne 1 ]; then
-    if ! ssh "$REMOTE_HOST" 'sh -s' -- abort "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" <"$REMOTE_OPS"; then
-      echo "警告: 中断後のステージ清掃または復元に失敗しました。対象: $stage" >&2
+    if state=$(ssh "$REMOTE_HOST" 'sh -s' -- status "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" <"$REMOTE_OPS"); then
+      case "$state" in
+        ACTIVE)
+          if ! ssh "$REMOTE_HOST" 'sh -s' -- abort "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" <"$REMOTE_OPS"; then
+            echo "警告: 中断後のステージ清掃または復元に失敗しました。対象: $stage" >&2
+          fi
+          ;;
+        COMMITTED|ALREADY_ROLLED_BACK) ;;
+        *) echo "警告: 配置状態を確定できません。自動変更を停止します。対象: $stage" >&2 ;;
+      esac
+    else
+      echo "警告: 配置状態を確認できません。自動変更を停止します。対象: $stage" >&2
     fi
   fi
   rm -rf "$tmp_dir"

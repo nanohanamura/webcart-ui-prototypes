@@ -6,8 +6,6 @@ EXPECTED_BACKUP_ROOT='/home/nano87/codex-backups'
 EXPECTED_LOCK='/home/nano87/www/staging/.webcart-prototype-deploy.lock'
 MARKER='.nanohana-webcart-prototype-managed'
 MANIFEST='.deploy-manifest.tsv'
-MARKER_TEXT='nanohana-webcart-prototype-v1
-target=/home/nano87/www/staging/webcart-prototype'
 PUBLIC_FILES='index.html
 manager-review.html
 assets/app.js
@@ -41,9 +39,10 @@ validate_paths() {
   [ "$target" = "$EXPECTED_TARGET" ] || die "unexpected target"
   [ "$backup_root" = "$EXPECTED_BACKUP_ROOT" ] || die "unexpected backup root"
   [ "$lock" = "$EXPECTED_LOCK" ] || die "unexpected lock"
-  case "$stage" in /home/nano87/www/staging/.webcart-prototype-stage-*) ;; *) die "unexpected stage" ;; esac
-  case "$backup" in /home/nano87/codex-backups/webcart-prototype-*) ;; *) die "unexpected backup" ;; esac
   case "$token" in ''|*[!A-Za-z0-9._-]*) die "invalid deployment token" ;; esac
+  [ "${#token}" -ge 6 ] && [ "${#token}" -le 100 ] || die "invalid deployment token length"
+  [ "$stage" = "$EXPECTED_TARGET.stage-$token" ] || die "unexpected stage"
+  [ "$backup" = "$EXPECTED_BACKUP_ROOT/webcart-prototype-$token" ] || die "unexpected backup"
 }
 
 file_size() {
@@ -68,10 +67,21 @@ file_sha256() {
 
 verify_marker() {
   dir=$1
+  expected_token=${2:-}
   marker_file="$dir/$MARKER"
   [ -f "$marker_file" ] || die "managed marker is missing"
   [ ! -L "$marker_file" ] || die "managed marker must not be a symlink"
-  [ "$(cat "$marker_file")" = "$MARKER_TEXT" ] || die "managed marker does not identify this target"
+  [ "$(wc -l <"$marker_file" | tr -d ' ')" = 3 ] || die "managed marker line count differs"
+  [ "$(sed -n '1p' "$marker_file")" = 'nanohana-webcart-prototype-v1' ] || die "managed marker version differs"
+  [ "$(sed -n '2p' "$marker_file")" = "target=$EXPECTED_TARGET" ] || die "managed marker does not identify this target"
+  marker_token=$(sed -n 's/^deployment=//p' "$marker_file")
+  case "$marker_token" in ''|*[!A-Za-z0-9._-]*) die "managed marker token is invalid" ;; esac
+  [ "${#marker_token}" -ge 6 ] && [ "${#marker_token}" -le 100 ] || die "managed marker token length differs"
+  [ -z "$expected_token" ] || [ "$marker_token" = "$expected_token" ] || die "managed marker deployment differs"
+}
+
+marker_token_of() {
+  sed -n 's/^deployment=//p' "$1/$MARKER"
 }
 
 verify_manifest() {
@@ -124,6 +134,37 @@ release_lock() {
   fi
 }
 
+deployment_status() {
+  if lock_owned "$lock_fs" "$token"; then
+    echo ACTIVE
+    return
+  fi
+  [ ! -e "$lock_fs" ] || {
+    echo UNKNOWN
+    return
+  }
+  [ ! -e "$stage_fs" ] || {
+    echo UNKNOWN
+    return
+  }
+  if [ -d "$target_fs" ] && [ ! -L "$target_fs" ] && (verify_marker "$target_fs" && verify_manifest "$target_fs") >/dev/null 2>&1; then
+    deployed_token=$(marker_token_of "$target_fs")
+    if [ "$deployed_token" = "$token" ]; then
+      echo COMMITTED
+    elif [ ! -e "$backup_fs" ]; then
+      echo ALREADY_ROLLED_BACK
+    else
+      echo UNKNOWN
+    fi
+    return
+  fi
+  if [ ! -e "$target_fs" ] && [ ! -e "$backup_fs" ]; then
+    echo ALREADY_ROLLED_BACK
+    return
+  fi
+  echo UNKNOWN
+}
+
 [ "$#" -ge 7 ] || die "remote operation requires at least seven arguments"
 operation=$1
 shift
@@ -146,6 +187,10 @@ backup_fs=$(fs_path "$backup")
 lock_fs=$(fs_path "$lock")
 
 case "$operation" in
+  status)
+    deployment_status
+    ;;
+
   prepare)
     mkdir "$lock_fs" 2>/dev/null || die "another deployment holds the lock"
     printf '%s\n' "$token" >"$lock_fs/token"
@@ -178,7 +223,13 @@ case "$operation" in
     ;;
 
   abort)
-    lock_owned "$lock_fs" "$token" || die "deployment lock is not owned by this run"
+    if ! lock_owned "$lock_fs" "$token"; then
+      state=$(deployment_status)
+      case "$state" in
+        COMMITTED|ALREADY_ROLLED_BACK) echo "$state"; exit 0 ;;
+        *) die "deployment state is UNKNOWN; automatic abort is unsafe" ;;
+      esac
+    fi
     if [ ! -e "$target_fs" ] && [ -e "$backup_fs" ]; then
       if ! mv "$backup_fs" "$target_fs"; then
         echo "ロールバックにも失敗しました。退避先を残します: $backup" >&2
@@ -187,6 +238,7 @@ case "$operation" in
     fi
     [ ! -e "$stage_fs" ] || rm -rf "$stage_fs"
     release_lock "$lock_fs" "$token"
+    echo ALREADY_ROLLED_BACK
     ;;
 
   finalize)
@@ -212,7 +264,7 @@ case "$operation" in
     trap 'exit 143' TERM
 
     [ -d "$stage_fs" ] || die "stage directory is missing"
-    verify_marker "$stage_fs"
+    verify_marker "$stage_fs" "$token"
     verify_manifest "$stage_fs"
     case "$expected_marker_size" in ''|*[!0-9]*) die "managed marker size expectation is invalid" ;; esac
     case "$expected_manifest_size" in ''|*[!0-9]*) die "manifest size expectation is invalid" ;; esac

@@ -48,12 +48,13 @@ run_ops() {
 
 fill_stage() {
   stage=$1
+  token=$2
   stage_fs=$(mapped "$stage")
   mkdir -p "$stage_fs/assets" "$stage_fs/data"
   for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json; do
     cp "$ROOT/$rel" "$stage_fs/$rel"
   done
-  printf 'nanohana-webcart-prototype-v1\ntarget=%s\n' "$TARGET" >"$stage_fs/$MARKER"
+  printf 'nanohana-webcart-prototype-v1\ntarget=%s\ndeployment=%s\n' "$TARGET" "$token" >"$stage_fs/$MARKER"
   write_manifest "$stage"
 }
 
@@ -71,7 +72,7 @@ deploy_initial() {
   backup=$2
   token=$3
   run_ops prepare "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token"
-  fill_stage "$stage"
+  fill_stage "$stage" "$token"
   finalize_stage "$stage" "$backup" "$token"
 }
 
@@ -86,27 +87,35 @@ finalize_stage() {
 }
 
 reset_remote initial
-stage='/home/nano87/www/staging/.webcart-prototype-stage-initial'
-backup="$BACKUP_ROOT/webcart-prototype-initial"
+stage="$TARGET.stage-$TOKEN"
+backup="$BACKUP_ROOT/webcart-prototype-$TOKEN"
 deploy_initial "$stage" "$backup" "$TOKEN"
 [ -f "$(mapped "$TARGET/$MARKER")" ] || fail "initial deployment marker is missing"
 [ -f "$(mapped "$TARGET/$MANIFEST")" ] || fail "initial deployment manifest is missing"
 [ ! -e "$(mapped "$LOCK")" ] || fail "initial deployment left the lock"
+[ "$(run_ops status "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$TOKEN")" = COMMITTED ] || fail "committed status was not detected"
+
+if run_ops status "$TARGET" "$TARGET.stage-wrong" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-$TOKEN" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
+  fail "stage not derived from token was accepted"
+fi
+if run_ops status "$TARGET" "$TARGET.stage-short" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-short" "$LOCK" short >/dev/null 2>&1; then
+  fail "short token was accepted"
+fi
 
 reset_remote unknown
 mkdir -p "$(mapped "$TARGET")"
 printf 'keep\n' >"$(mapped "$TARGET/unknown.txt")"
-if run_ops prepare "$TARGET" '/home/nano87/www/staging/.webcart-prototype-stage-unknown' "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-unknown" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
+if run_ops prepare "$TARGET" "$TARGET.stage-$TOKEN" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-$TOKEN" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
   fail "unknown existing target was accepted"
 fi
 [ -f "$(mapped "$TARGET/unknown.txt")" ] || fail "unknown target was changed"
 
 reset_remote update
-deploy_initial '/home/nano87/www/staging/.webcart-prototype-stage-old' "$BACKUP_ROOT/webcart-prototype-old" old-token
-new_stage='/home/nano87/www/staging/.webcart-prototype-stage-new'
-new_backup="$BACKUP_ROOT/webcart-prototype-new"
+deploy_initial "$TARGET.stage-old-token" "$BACKUP_ROOT/webcart-prototype-old-token" old-token
+new_stage="$TARGET.stage-new-token"
+new_backup="$BACKUP_ROOT/webcart-prototype-new-token"
 run_ops prepare "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" new-token
-fill_stage "$new_stage"
+  fill_stage "$new_stage" new-token
 printf '\n<!-- updated -->\n' >>"$(mapped "$new_stage/index.html")"
 write_manifest "$new_stage"
 finalize_stage "$new_stage" "$new_backup" new-token
@@ -114,30 +123,31 @@ finalize_stage "$new_stage" "$new_backup" new-token
 grep -F '<!-- updated -->' "$(mapped "$TARGET/index.html")" >/dev/null || fail "managed update did not switch target"
 
 reset_remote partial
-partial_stage='/home/nano87/www/staging/.webcart-prototype-stage-partial'
-run_ops prepare "$TARGET" "$partial_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-partial" "$LOCK" partial-token
+partial_stage="$TARGET.stage-partial-token"
+run_ops prepare "$TARGET" "$partial_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-partial-token" "$LOCK" partial-token
 cp "$ROOT/index.html" "$(mapped "$partial_stage/index.html")"
-run_ops abort "$TARGET" "$partial_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-partial" "$LOCK" partial-token
+run_ops abort "$TARGET" "$partial_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-partial-token" "$LOCK" partial-token
 [ ! -e "$(mapped "$partial_stage")" ] || fail "abort left partial stage"
 [ ! -e "$(mapped "$LOCK")" ] || fail "abort left lock"
 
 reset_remote mismatch
-mismatch_stage='/home/nano87/www/staging/.webcart-prototype-stage-mismatch'
-run_ops prepare "$TARGET" "$mismatch_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-mismatch" "$LOCK" mismatch-token
-fill_stage "$mismatch_stage"
+mismatch_stage="$TARGET.stage-mismatch-token"
+run_ops prepare "$TARGET" "$mismatch_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-mismatch-token" "$LOCK" mismatch-token
+fill_stage "$mismatch_stage" mismatch-token
 printf 'tamper\n' >>"$(mapped "$mismatch_stage/index.html")"
-if finalize_stage "$mismatch_stage" "$BACKUP_ROOT/webcart-prototype-mismatch" mismatch-token >/dev/null 2>&1; then
+if finalize_stage "$mismatch_stage" "$BACKUP_ROOT/webcart-prototype-mismatch-token" mismatch-token >/dev/null 2>&1; then
   fail "hash mismatch was accepted"
 fi
 [ ! -e "$(mapped "$TARGET")" ] || fail "hash mismatch created target"
 [ ! -e "$(mapped "$mismatch_stage")" ] || fail "hash mismatch left stale stage"
 [ ! -e "$(mapped "$LOCK")" ] || fail "hash mismatch left lock"
+[ "$(run_ops status "$TARGET" "$mismatch_stage" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-mismatch-token" "$LOCK" mismatch-token)" = ALREADY_ROLLED_BACK ] || fail "failed initial finalize was not recognized as safely rolled back"
 
 reset_remote management_hash
-management_stage='/home/nano87/www/staging/.webcart-prototype-stage-management-hash'
-management_backup="$BACKUP_ROOT/webcart-prototype-management-hash"
+management_stage="$TARGET.stage-management-token"
+management_backup="$BACKUP_ROOT/webcart-prototype-management-token"
 run_ops prepare "$TARGET" "$management_stage" "$BACKUP_ROOT" "$management_backup" "$LOCK" management-token
-fill_stage "$management_stage"
+fill_stage "$management_stage" management-token
 management_fs=$(mapped "$management_stage")
 if run_ops finalize "$TARGET" "$management_stage" "$BACKUP_ROOT" "$management_backup" "$LOCK" management-token \
   "$(size_file "$management_fs/$MARKER")" '0000000000000000000000000000000000000000000000000000000000000000' \
@@ -148,12 +158,12 @@ fi
 [ ! -e "$(mapped "$LOCK")" ] || fail "management hash mismatch left lock"
 
 reset_remote rollback
-deploy_initial '/home/nano87/www/staging/.webcart-prototype-stage-rb-old' "$BACKUP_ROOT/webcart-prototype-rb-old" rb-old
+deploy_initial "$TARGET.stage-rb-old" "$BACKUP_ROOT/webcart-prototype-rb-old" rb-old
 old_hash=$(sha256_file "$(mapped "$TARGET/index.html")")
-rb_stage='/home/nano87/www/staging/.webcart-prototype-stage-rb-new'
+rb_stage="$TARGET.stage-rb-new"
 rb_backup="$BACKUP_ROOT/webcart-prototype-rb-new"
 run_ops prepare "$TARGET" "$rb_stage" "$BACKUP_ROOT" "$rb_backup" "$LOCK" rb-new
-fill_stage "$rb_stage"
+fill_stage "$rb_stage" rb-new
 rb_stage_fs=$(mapped "$rb_stage")
 if NANOHANA_DEPLOY_TEST_ROOT="$REMOTE_FS" NANOHANA_DEPLOY_TEST_FAIL_AFTER_BACKUP=1 sh "$OPS" finalize "$TARGET" "$rb_stage" "$BACKUP_ROOT" "$rb_backup" "$LOCK" rb-new \
   "$(size_file "$rb_stage_fs/$MARKER")" "$(sha256_file "$rb_stage_fs/$MARKER")" \
@@ -163,13 +173,15 @@ fi
 [ "$(sha256_file "$(mapped "$TARGET/index.html")")" = "$old_hash" ] || fail "target was not rolled back"
 [ ! -e "$(mapped "$rb_stage")" ] || fail "rollback left stage"
 [ ! -e "$(mapped "$LOCK")" ] || fail "rollback left lock"
+[ "$(run_ops status "$TARGET" "$rb_stage" "$BACKUP_ROOT" "$rb_backup" "$LOCK" rb-new)" = ALREADY_ROLLED_BACK ] || fail "rolled back status was not detected"
+run_ops abort "$TARGET" "$rb_stage" "$BACKUP_ROOT" "$rb_backup" "$LOCK" rb-new >/dev/null
 
 reset_remote rollback_failure
-deploy_initial '/home/nano87/www/staging/.webcart-prototype-stage-rbf-old' "$BACKUP_ROOT/webcart-prototype-rbf-old" rbf-old
-rbf_stage='/home/nano87/www/staging/.webcart-prototype-stage-rbf-new'
+deploy_initial "$TARGET.stage-rbf-old" "$BACKUP_ROOT/webcart-prototype-rbf-old" rbf-old
+rbf_stage="$TARGET.stage-rbf-new"
 rbf_backup="$BACKUP_ROOT/webcart-prototype-rbf-new"
 run_ops prepare "$TARGET" "$rbf_stage" "$BACKUP_ROOT" "$rbf_backup" "$LOCK" rbf-new
-fill_stage "$rbf_stage"
+fill_stage "$rbf_stage" rbf-new
 rbf_fs=$(mapped "$rbf_stage")
 if NANOHANA_DEPLOY_TEST_ROOT="$REMOTE_FS" NANOHANA_DEPLOY_TEST_FAIL_AFTER_BACKUP=1 NANOHANA_DEPLOY_TEST_FAIL_ROLLBACK=1 \
   sh "$OPS" finalize "$TARGET" "$rbf_stage" "$BACKUP_ROOT" "$rbf_backup" "$LOCK" rbf-new \
@@ -184,18 +196,18 @@ grep -F 'ロールバックにも失敗しました' "$temp/rbf.err" >/dev/null 
 [ ! -e "$(mapped "$LOCK")" ] || fail "rollback failure left lock"
 
 reset_remote lock
-run_ops prepare "$TARGET" '/home/nano87/www/staging/.webcart-prototype-stage-lock-a' "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-a" "$LOCK" lock-a
-if run_ops prepare "$TARGET" '/home/nano87/www/staging/.webcart-prototype-stage-lock-b' "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-b" "$LOCK" lock-b >/dev/null 2>&1; then
+run_ops prepare "$TARGET" "$TARGET.stage-lock-a" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-a" "$LOCK" lock-a
+if run_ops prepare "$TARGET" "$TARGET.stage-lock-b" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-b" "$LOCK" lock-b >/dev/null 2>&1; then
   fail "parallel lock was accepted"
 fi
-run_ops abort "$TARGET" '/home/nano87/www/staging/.webcart-prototype-stage-lock-a' "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-a" "$LOCK" lock-a
+run_ops abort "$TARGET" "$TARGET.stage-lock-a" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-lock-a" "$LOCK" lock-a
 
 reset_remote collision
-deploy_initial '/home/nano87/www/staging/.webcart-prototype-stage-col-old' "$BACKUP_ROOT/webcart-prototype-col-old" col-old
-col_stage='/home/nano87/www/staging/.webcart-prototype-stage-col-new'
+deploy_initial "$TARGET.stage-col-old" "$BACKUP_ROOT/webcart-prototype-col-old" col-old
+col_stage="$TARGET.stage-col-new"
 col_backup="$BACKUP_ROOT/webcart-prototype-col-new"
 run_ops prepare "$TARGET" "$col_stage" "$BACKUP_ROOT" "$col_backup" "$LOCK" col-new
-fill_stage "$col_stage"
+fill_stage "$col_stage" col-new
 mkdir -p "$(mapped "$col_backup")"
 if finalize_stage "$col_stage" "$col_backup" col-new >/dev/null 2>&1; then
   fail "backup collision was accepted"
