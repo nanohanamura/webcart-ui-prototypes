@@ -49,6 +49,13 @@ test("only DELFLG zero products are listed and all categories stay available", (
   assert.equal(api.categoriesWithCounts(catalog.categories, listed).length, 55);
 });
 
+test("catalog top defaults to every listed product", () => {
+  const { api } = loadHelpers();
+  const html = api.renderCatalog(catalog, new URLSearchParams(), {});
+  assert.match(html, /<h1 id="products-title">すべての商品<\/h1>/);
+  assert.match(html, />621商品</);
+});
+
 test("search prioritizes exact product code and also finds names and specifications", () => {
   const { api } = loadHelpers();
   const listed = api.listedProducts(catalog.products);
@@ -99,13 +106,15 @@ test("all 621 listed records can render without losing their product codes", () 
   }
 });
 
-test("list cards use lightweight thumbnails while detail keeps the full image available", () => {
+test("list cards use the current full image without eager loading every product", () => {
   const { api } = loadHelpers();
   const product = api.listedProducts(catalog.products).find((item) => item.image_url && item.thumbnail_url && item.image_url !== item.thumbnail_url);
   assert.ok(product);
   const card = api.productCard(product);
-  assert.match(card, new RegExp(product.thumbnail_url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.doesNotMatch(card, new RegExp(product.image_url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(card, new RegExp(product.image_url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.doesNotMatch(card, new RegExp(product.thumbnail_url.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(card, /loading="lazy"/);
+  assert.match(card, /decoding="async"/);
 });
 
 test("responsive CSS keeps two mobile columns, four desktop columns and portrait contained images", () => {

@@ -1,7 +1,7 @@
 (function (global) {
   "use strict";
 
-  const DEFAULT_CATEGORY = "44";
+  const DEFAULT_CATEGORY = "all";
   const MAX_CART_QUANTITY = 99;
   const CART_STORAGE_VERSION = "v1";
   const numberFormat = new Intl.NumberFormat("ja-JP");
@@ -222,11 +222,9 @@
   }
 
   function imageMarkup(product, detail) {
-    const imageUrl = text(detail
-      ? (product.image_url || product.thumbnail_url)
-      : (product.thumbnail_url || product.image_url));
+    const imageUrl = text(product.image_url || product.thumbnail_url);
     if (!imageUrl) return '<span class="image-placeholder">画像を準備中</span>';
-    return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.SHOHINNM)}"${detail ? "" : ' loading="lazy"'} width="600" height="700">`;
+    return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.SHOHINNM)}"${detail ? "" : ' loading="lazy"'} decoding="async" width="600" height="700">`;
   }
 
   function cartControls(product, quantity) {
