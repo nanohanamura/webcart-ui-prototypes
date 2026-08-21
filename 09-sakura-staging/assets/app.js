@@ -2,6 +2,7 @@
   "use strict";
 
   const DEFAULT_CATEGORY = "all";
+  const PLACEHOLDER_IMAGE_URL = "https://nano87.sakura.ne.jp/webcart/img/dumy.jpg";
   const MAX_CART_QUANTITY = 99;
   const CART_STORAGE_VERSION = "v1";
   const numberFormat = new Intl.NumberFormat("ja-JP");
@@ -222,9 +223,11 @@
   }
 
   function imageMarkup(product, detail) {
-    const imageUrl = text(product.image_url || product.thumbnail_url);
-    if (!imageUrl) return '<span class="image-placeholder">画像を準備中</span>';
-    return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.SHOHINNM)}"${detail ? "" : ' loading="lazy"'} decoding="async" width="600" height="700">`;
+    const registeredImageUrl = text(product.image_url || product.thumbnail_url);
+    const imageUrl = registeredImageUrl || PLACEHOLDER_IMAGE_URL;
+    const alt = registeredImageUrl ? text(product.SHOHINNM) : "商品画像を準備中";
+    const className = registeredImageUrl ? "" : ' class="is-placeholder"';
+    return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}"${className}${detail ? "" : ' loading="lazy"'} decoding="async" width="600" height="700">`;
   }
 
   function cartControls(product, quantity) {

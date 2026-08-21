@@ -90,6 +90,8 @@ test("edge values render safely", () => {
   const noImage = { SHOHINCD: 1, SHOHINNM: "画像なし", BAIKA: 0, KIKAKUSETSUMEI: "", ONDOTAI: null, image_url: "" };
   const longName = { ...noImage, SHOHINCD: 2, SHOHINNM: "<script>とても長い商品名&確認用</script>" };
   assert.match(api.productCard(noImage), /画像を準備中/);
+  assert.match(api.productCard(noImage), /https:\/\/nano87\.sakura\.ne\.jp\/webcart\/img\/dumy\.jpg/);
+  assert.match(api.productCard(noImage), /alt="商品画像を準備中"/);
   assert.match(api.productCard(noImage), /価格は店頭でご確認ください/);
   assert.doesNotMatch(api.productCard(longName), /<script>/);
   assert.match(api.productCard(longName), /&lt;script&gt;/);
@@ -127,6 +129,19 @@ test("responsive CSS keeps two mobile columns, four desktop columns and portrait
   assert.match(css, /\.product-actions\s*\{[^}]*justify-content:\s*flex-end/s);
   assert.match(css, /\.site-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*0/s);
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
+});
+
+test("product cards, product images and category controls use one rounded visual system", () => {
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /--radius-card:\s*14px/);
+  assert.match(css, /--radius-media:\s*10px/);
+  assert.match(css, /--radius-control:\s*10px/);
+  assert.match(css, /\.product-card\s*\{[^}]*border-radius:\s*var\(--radius-card\)/s);
+  assert.match(css, /\.product-image\s*\{[^}]*padding:\s*8px/s);
+  assert.match(css, /\.product-image img\s*\{[^}]*border-radius:\s*var\(--radius-media\)/s);
+  assert.match(css, /\.category-item\s*\{[^}]*border-radius:\s*var\(--radius-control\)/s);
+  assert.match(css, /\.category-search input\s*\{[^}]*border-radius:\s*var\(--radius-control\)/s);
+  assert.match(css, /\.panel-head button\s*\{[^}]*border-radius:\s*var\(--radius-control\)/s);
 });
 
 test("long specifications stay clamped in list cards while purchase controls remain at the card bottom", () => {

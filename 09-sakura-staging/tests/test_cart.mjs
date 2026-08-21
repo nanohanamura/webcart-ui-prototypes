@@ -158,7 +158,12 @@ test("localStorage getter failure uses one persistent in-memory storage for load
 
 test("cart remains prototype-only and connects to no order, login, payment, mail, CSV, NILE or remote endpoint", () => {
   const { source } = loadHelpers();
-  assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|https?:\/\/(?!www\.nano87\.com)/i);
+  assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:/i);
+  const externalUrls = [...new Set(source.match(/https?:\/\/[^"'`\s]+/g) || [])].sort();
+  assert.deepEqual(externalUrls, [
+    "https://nano87.sakura.ne.jp/webcart/img/dumy.jpg",
+    "https://www.nano87.com/"
+  ]);
   assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/catalog(?:-meta)?\.json)/);
   assert.doesNotMatch(source, /<form[^>]+action=/i);
 });
