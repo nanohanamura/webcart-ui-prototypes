@@ -203,8 +203,12 @@ test("in-page and browser-history transitions announce the new screen without fo
   const { source } = loadHelpers();
   assert.match(source, /renderPage\(\{\s*focusMain:\s*true\s*\}\)/);
   assert.match(source, /addEventListener\("popstate",\s*\(\)\s*=>\s*renderPage\(\{\s*focusMain:\s*true\s*\}\)\)/);
-  assert.match(source, /if\s*\(options\.focusMain\)\s*document\.querySelector\("#main"\)\?\.focus/);
+  assert.match(source, /const main = document\.querySelector\("#main"\)/);
+  assert.match(source, /main\?\.scrollIntoView\(\{\s*block:\s*"start"\s*\}\)/);
+  assert.match(source, /main\?\.focus\(\{\s*preventScroll:\s*true\s*\}\)/);
   assert.match(source, /\n\s*renderPage\(\);\n/, "initial load must render without forced focus");
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /\.flow-shell\s*\{[^}]*scroll-margin-top:\s*(?:9[0-9]|[1-9][0-9]{2,})px/s);
 });
 
 test("cart checkout is enabled and enters the safe in-page flow", () => {

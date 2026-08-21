@@ -738,7 +738,11 @@
           bindCatalogEvents();
           bindImageErrors();
           bindFlowEvents(renderPage);
-          if (options.focusMain) document.querySelector("#main")?.focus({ preventScroll: true });
+          if (options.focusMain) {
+            const main = document.querySelector("#main");
+            main?.scrollIntoView({ block: "start" });
+            main?.focus({ preventScroll: true });
+          }
         };
         renderPage();
         bindCartEvents(catalog, cart, storage, storageKey);
