@@ -1,3 +1,5 @@
+import datetime
+import decimal
 import json
 import sys
 import tempfile
@@ -237,6 +239,78 @@ class SnapshotContractTests(unittest.TestCase):
             "MT_OTODOKE", "MT_SHIHARAI", "TR_SHIHARAI",
         ):
             self.assertNotIn(forbidden_table, source)
+
+    def test_remote_export_decodes_0xad_with_explicit_cp932_fallback(self):
+        raw = bytes([0xAD])
+        preserved = raw.decode("latin1")
+        self.assertEqual(raw.decode("cp932"), remote_export._json_value(preserved))
+
+    def test_remote_export_prefers_euc_jp_for_byte_preserved_text(self):
+        raw = "有機にんじん".encode("euc_jp")
+        preserved = raw.decode("latin1")
+        self.assertEqual("有機にんじん", remote_export._json_value(preserved))
+
+    def test_remote_export_rejects_text_invalid_in_all_legacy_encodings(self):
+        preserved = bytes([0x81]).decode("latin1")
+        with self.assertRaises(UnicodeDecodeError):
+            remote_export._json_value(preserved)
+
+    def test_remote_export_keeps_numeric_and_date_types(self):
+        self.assertEqual(280, remote_export._json_value(decimal.Decimal("280")))
+        self.assertEqual(
+            "2026-08-22",
+            remote_export._json_value(datetime.date(2026, 8, 22)),
+        )
+
+    def test_remote_export_switches_result_decoding_before_cursor_use(self):
+        class FakeCursor:
+            def __init__(self, connection):
+                self.connection = connection
+                self.executed = []
+
+            def execute(self, sql):
+                self.executed.append(sql)
+
+            def fetchall(self):
+                if self.connection.encoding != "latin1":
+                    raise UnicodeDecodeError("euc_jp", b"\xad", 0, 1, "invalid byte")
+                return []
+
+            def close(self):
+                pass
+
+        class FakeConnection:
+            def __init__(self):
+                self.encoding = "euc_jp"
+                self.cursor_instance = FakeCursor(self)
+
+            def cursor(self):
+                return self.cursor_instance
+
+            def close(self):
+                pass
+
+        class FakeCore:
+            def __init__(self, connection):
+                self.connection = connection
+
+            @staticmethod
+            def default_env_path():
+                return "/unused/.env"
+
+            @staticmethod
+            def load_env(_path):
+                return {"not": "printed"}
+
+            def connect(self, _env):
+                return self.connection
+
+        connection = FakeConnection()
+        result = remote_export.export_catalog(FakeCore(connection))
+
+        self.assertEqual("latin1", connection.encoding)
+        self.assertEqual([], result["products"])
+        self.assertEqual([], result["categories"])
 
 
 if __name__ == "__main__":

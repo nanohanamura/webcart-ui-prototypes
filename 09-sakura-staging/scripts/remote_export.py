@@ -12,6 +12,8 @@ import sys
 
 
 GAZO_MODULE_DIR = "/home/nano87/gazo"
+BYTE_PRESERVING_ENCODING = "latin1"
+LEGACY_TEXT_ENCODINGS = ("euc_jp", "cp932")
 
 PRODUCT_COLUMNS = (
     "SHOHINCD", "SHOHINNM", "BAIKA", "SHOHINBUNRUICD", "NARABIJUN",
@@ -41,9 +43,25 @@ CATEGORY_SQL = (
 )
 
 
+def _decode_legacy_text(value):
+    if isinstance(value, str):
+        raw = value.encode(BYTE_PRESERVING_ENCODING)
+    else:
+        raw = bytes(value)
+    last_error = None
+    for encoding in LEGACY_TEXT_ENCODINGS:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError as error:
+            last_error = error
+    raise last_error
+
+
 def _json_value(value):
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (int, float, bool)):
         return value
+    if isinstance(value, str):
+        return _decode_legacy_text(value)
     if isinstance(value, decimal.Decimal):
         if value == value.to_integral_value():
             return int(value)
@@ -51,7 +69,7 @@ def _json_value(value):
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
         return value.isoformat()
     if isinstance(value, bytes):
-        return value.decode("utf-8")
+        return _decode_legacy_text(value)
     raise TypeError("unsupported database value type: %s" % type(value).__name__)
 
 
@@ -79,6 +97,9 @@ def _load_core():
 def export_catalog(core):
     env = core.load_env(core.default_env_path())
     connection = core.connect(env)
+    # PyMySQL normally decodes text while fetchall() is reading each packet.
+    # Preserve every byte first so legacy rows can be decoded field by field.
+    connection.encoding = BYTE_PRESERVING_ENCODING
     cursor = None
     try:
         cursor = connection.cursor()
