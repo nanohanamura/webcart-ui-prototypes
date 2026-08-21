@@ -16,7 +16,7 @@ test("manager review page is a noindex prototype and returns to the shopping top
   assert.match(html, /<h1>店長確認表<\/h1>/);
   assert.match(html, /href="index\.html"/);
   assert.doesNotMatch(html, /<form\b|<input\b[^>]*type=["'](?:text|email|tel|password)|<textarea\b|contenteditable/i, "the public checklist must not collect personal notes");
-  assert.equal((html.match(/type="checkbox"/g) || []).length, 10);
+  assert.equal((html.match(/type="checkbox"/g) || []).length, 12);
   assert.match(html, /チェック状態は保存・送信されません/);
 });
 
@@ -27,6 +27,8 @@ test("manager review page contains every agreed short review topic", () => {
     "商品情報と画像",
     "カート操作",
     "一般発送と定期配達の入口",
+    "Web会員登録・Web会員CD・ログインの扱い",
+    "一般発送のお届け区分コード・設定値",
     "支払い方法",
     "送料",
     "配送先",
@@ -37,6 +39,7 @@ test("manager review page contains every agreed short review topic", () => {
     assert.match(html, new RegExp(topic), topic);
   }
   assert.match(html, /店長確認が必要/);
+  assert.match(html, /一般発送のお届け区分コード・設定値[\s\S]*未確認/);
 });
 
 test("every public screen carries noindex and a prototype no-send notice", () => {
