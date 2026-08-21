@@ -30,7 +30,7 @@ CATEGORY_COLUMNS = (
 )
 
 INTEGER_PRODUCT_FIELDS = (
-    "SHOHINCD", "BAIKA", "SHOHINBUNRUICD", "NARABIJUN",
+    "SHOHINCD", "SHOHINBUNRUICD", "NARABIJUN",
     "HAIKEISHOKUCD", "ONDOTAI", "CHUMOKUCD", "CHOKUSOKBN", "DELFLG",
 )
 REQUIRED_STRING_PRODUCT_FIELDS = ("SHOHINNM",)
@@ -75,6 +75,8 @@ def _validate_product(row, index):
     for field in INTEGER_PRODUCT_FIELDS:
         if not _is_int(row[field]):
             raise SnapshotValidationError("%s.%s must be an integer" % (label, field))
+    if row["BAIKA"] is not None and not _is_int(row["BAIKA"]):
+        raise SnapshotValidationError("%s.BAIKA must be an integer or null" % label)
     for field in REQUIRED_STRING_PRODUCT_FIELDS:
         if not isinstance(row[field], str) or not row[field].strip():
             raise SnapshotValidationError("%s.%s must be a non-empty string" % (label, field))
@@ -84,6 +86,10 @@ def _validate_product(row, index):
     if row["DELFLG"] not in ALLOWED_DELFLG:
         raise SnapshotValidationError(
             "%s.DELFLG must be one of 0, 1, 2" % label
+        )
+    if row["DELFLG"] == 0 and row["BAIKA"] is None:
+        raise SnapshotValidationError(
+            "%s listed product must have an integer BAIKA" % label
         )
     filename = row["GAZOFILENM"]
     if filename is not None and filename != "" and not SAFE_IMAGE_NAME.fullmatch(filename):
@@ -318,6 +324,11 @@ def build_snapshot(payload, output_dir):
         "visibility_contract": "UI displays only products where DELFLG == 0",
         "decode_warning_count": len(payload["decode_warnings"]),
         "decode_warnings": list(payload["decode_warnings"]),
+        "hidden_null_price_count": sum(
+            1
+            for item in products
+            if item["DELFLG"] != 0 and item["BAIKA"] is None
+        ),
     }
     output_dir = Path(output_dir)
     _publish_json_pair(

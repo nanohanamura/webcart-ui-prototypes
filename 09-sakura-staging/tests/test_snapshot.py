@@ -122,6 +122,26 @@ class SnapshotContractTests(unittest.TestCase):
         data["products"][0]["BAIKA"] = "280"
         self.assert_rejected(data, "BAIKA")
 
+    def test_hidden_product_may_keep_null_price_and_meta_counts_it(self):
+        data = payload()
+        data["products"][1]["BAIKA"] = None
+
+        with tempfile.TemporaryDirectory() as tmp:
+            build_snapshot.build_snapshot(data, Path(tmp))
+            catalog = json.loads((Path(tmp) / "catalog.json").read_text(encoding="utf-8"))
+            meta = json.loads(
+                (Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8")
+            )
+
+        hidden = next(row for row in catalog["products"] if row["SHOHINCD"] == 502)
+        self.assertIsNone(hidden["BAIKA"])
+        self.assertEqual(1, meta["hidden_null_price_count"])
+
+    def test_listed_product_with_null_price_is_rejected(self):
+        data = payload()
+        data["products"][0]["BAIKA"] = None
+        self.assert_rejected(data, "listed product.*BAIKA")
+
     def test_declared_counts_must_match_the_rows(self):
         data = payload()
         data["counts"]["products"] = 999
