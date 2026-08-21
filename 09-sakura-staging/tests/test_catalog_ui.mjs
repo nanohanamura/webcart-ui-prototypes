@@ -5,6 +5,7 @@ import vm from "node:vm";
 
 const root = new URL("../", import.meta.url);
 const catalog = JSON.parse(fs.readFileSync(new URL("data/catalog.json", root), "utf8"));
+const catalogMeta = JSON.parse(fs.readFileSync(new URL("data/catalog-meta.json", root), "utf8"));
 
 function loadHelpers() {
   const source = fs.readFileSync(new URL("assets/app.js", root), "utf8");
@@ -22,7 +23,18 @@ test("page skeleton and local snapshot loader exist", () => {
   assert.match(html, /assets\/styles\.css/);
   const { source } = loadHelpers();
   assert.match(source, /fetch\("\.\/data\/catalog\.json"/);
+  assert.match(source, /fetch\("\.\/data\/catalog-meta\.json"/);
   assert.doesNotMatch(source, /fetch\(["']https?:/);
+});
+
+test("category and search navigation remove the one-shot drawer parameter", () => {
+  const { api, source } = loadHelpers();
+  const original = new URLSearchParams("open=categories&gc_cd=44&word=豆");
+  assert.equal(api.categoryNavigationParams(original, "25").get("open"), null);
+  assert.equal(api.categoryNavigationParams(original, "25").get("gc_cd"), "25");
+  assert.equal(api.searchNavigationParams(original, "味噌").get("open"), null);
+  assert.equal(api.searchNavigationParams(original, "味噌").get("word"), "味噌");
+  assert.match(source, /params\.delete\("open"\)/);
 });
 
 test("only DELFLG zero products are listed and all categories stay available", () => {
@@ -102,6 +114,39 @@ test("responsive CSS keeps two mobile columns, four desktop columns and portrait
   assert.match(css, /\.product-image img\s*\{[^}]*object-fit:\s*contain/s);
   assert.match(css, /\.add-button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(css, /\.product-actions\s*\{[^}]*justify-content:\s*flex-end/s);
+  assert.match(css, /\.site-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*0/s);
+  assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
+});
+
+test("category drawer is modal, keyboard-contained, and restores page access on close", () => {
+  const { source } = loadHelpers();
+  assert.match(source, /role="dialog" aria-modal="true"[^>]*hidden inert/);
+  assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /event\.key !== "Tab"/);
+  assert.match(source, /backgroundNodes\.forEach/);
+  assert.match(source, /node\.toggleAttribute\("inert", isOpen\)/);
+  assert.match(source, /categorySearch\.focus\(\)/);
+  assert.match(source, /drawerOrigin\?\.focus\(\)/);
+});
+
+test("decode-warning product descriptions are not shown as corrupted text", () => {
+  const { api } = loadHelpers();
+  const warningCodes = api.decodeWarningProductCodes(catalog, catalogMeta);
+  assert.equal(warningCodes.has("2704"), true);
+  assert.equal(warningCodes.has("4970"), true);
+  const warned = catalog.products.find((product) => String(product.SHOHINCD) === "2704");
+  const safe = api.safeDescription(warned, warningCodes);
+  assert.equal(safe.status, "warning");
+  assert.equal(safe.text, "商品説明は確認中です");
+  assert.doesNotMatch(safe.text, /�/);
+  const normal = catalog.products.find((product) => product.DELFLG === 0 && product.SHOSAISETSUMEI && !warningCodes.has(String(product.SHOHINCD)));
+  assert.ok(normal);
+  assert.equal(api.safeDescription(normal, warningCodes).text, normal.SHOSAISETSUMEI.trim());
+  const listedWarningCodes = api.listedProducts(catalog.products).filter((product) => warningCodes.has(String(product.SHOHINCD))).map((product) => String(product.SHOHINCD));
+  assert.deepEqual(listedWarningCodes.sort(), ["2704", "4970"]);
+  const warnedDetail = api.renderDetail(catalog, catalogMeta, "2704");
+  assert.match(warnedDetail, /商品説明は確認中です/);
+  assert.doesNotMatch(warnedDetail, /�/);
 });
 
 test("catalog task has no order, login, database, NILE, CSV, mail, or external write connection", () => {

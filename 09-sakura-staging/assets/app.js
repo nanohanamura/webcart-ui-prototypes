@@ -77,6 +77,46 @@
       : `分類コード ${text(code)}`;
   }
 
+  function categoryNavigationParams(currentParams, code) {
+    const params = new URLSearchParams(currentParams);
+    params.delete("open");
+    params.delete("product");
+    params.delete("word");
+    params.set("gc_cd", text(code));
+    return params;
+  }
+
+  function searchNavigationParams(currentParams, word) {
+    const params = new URLSearchParams(currentParams);
+    params.delete("open");
+    params.delete("product");
+    params.set("gc_cd", "all");
+    const trimmedWord = text(word).trim();
+    if (trimmedWord) params.set("word", trimmedWord);
+    else params.delete("word");
+    return params;
+  }
+
+  function decodeWarningProductCodes(catalog, meta) {
+    const codes = new Set();
+    const products = Array.isArray(catalog && catalog.products) ? catalog.products : [];
+    const warnings = Array.isArray(meta && meta.decode_warnings) ? meta.decode_warnings : [];
+    warnings.forEach((warning) => {
+      const match = /^products\[(\d+)\]\.SHOSAISETSUMEI$/.exec(text(warning));
+      if (!match) return;
+      const index = Number(match[1]);
+      if (!Number.isSafeInteger(index) || index < 0 || index >= products.length) return;
+      const product = products[index];
+      if (product && product.SHOHINCD !== null && product.SHOHINCD !== undefined) codes.add(text(product.SHOHINCD));
+    });
+    return codes;
+  }
+
+  function safeDescription(product, warningCodes) {
+    if (warningCodes.has(text(product.SHOHINCD))) return { status: "warning", text: "商品説明は確認中です" };
+    return { status: "normal", text: text(product.SHOSAISETSUMEI).trim() };
+  }
+
   function temperatureLabel(value) {
     return { 0: "常温", 1: "冷蔵", 2: "冷凍" }[value] || "温度帯未設定";
   }
@@ -136,8 +176,8 @@
         <span>${escapeHtml(category.SHOHINBUNRUITITLE || `分類コード ${code}`)}</span><small>${category.productCount}商品</small>
       </button>`;
     }).join("");
-    return `<div class="scrim" data-close-categories></div>
-      <aside class="category-panel" aria-hidden="true" aria-labelledby="category-title">
+    return `<div class="scrim" data-close-categories hidden></div>
+      <aside class="category-panel" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="category-title" hidden inert>
         <div class="panel-head"><div><small>全${categories.length}分類</small><h2 id="category-title">カテゴリー</h2></div><button type="button" data-close-categories aria-label="カテゴリーを閉じる">×</button></div>
         <label class="category-search">カテゴリー名で絞る<input type="search" data-category-search autocomplete="off"></label>
         <div class="category-list">
@@ -179,14 +219,14 @@
     </main>${categoryPanel(categories, activeCategory, listed.length)}${bottomNav()}`;
   }
 
-  function renderDetail(catalog, code) {
+  function renderDetail(catalog, meta, code) {
     const listed = listedProducts(catalog.products);
     const product = findProduct(listed, code);
     if (!product) {
       return `${header()}<main id="main" class="detail-shell" tabindex="-1"><a class="back-link" href="index.html">← 商品一覧へ</a><section class="empty-state"><h1>商品が見つかりません</h1><p>掲載を終了したか、商品コードが正しくない可能性があります。</p></section></main>${bottomNav()}`;
     }
     const category = categoryName(catalog.categories, product.SHOHINBUNRUICD);
-    const description = text(product.SHOSAISETSUMEI).trim();
+    const description = safeDescription(product, decodeWarningProductCodes(catalog, meta));
     return `${header()}<main id="main" class="detail-shell" tabindex="-1">
       <a class="back-link" href="index.html?gc_cd=${encodeURIComponent(text(product.SHOHINBUNRUICD))}">← ${escapeHtml(category)}へ戻る</a>
       <article class="product-detail">
@@ -197,7 +237,7 @@
           <p class="detail-spec">${escapeHtml(product.KIKAKUSETSUMEI) || "規格未設定"}</p>
           <p class="detail-price">${priceLabel(product.BAIKA)}</p>
           <button class="add-button detail-add" type="button" data-cart-hook="${escapeHtml(product.SHOHINCD)}" disabled title="カート機能は次の試作工程で追加します">カートに追加</button>
-          ${description ? `<section class="description"><h2>商品について</h2><p>${escapeHtml(description)}</p></section>` : ""}
+          ${description.text ? `<section class="description${description.status === "warning" ? " is-warning" : ""}"><h2>商品について</h2><p>${escapeHtml(description.text)}</p></section>` : ""}
         </div>
       </article>
     </main>${bottomNav()}`;
@@ -206,43 +246,90 @@
   function bindCatalogEvents() {
     const panel = document.querySelector(".category-panel");
     const scrim = document.querySelector(".scrim");
-    const open = () => { panel.classList.add("is-open"); panel.setAttribute("aria-hidden", "false"); scrim.classList.add("is-open"); };
-    const close = () => { panel.classList.remove("is-open"); panel.setAttribute("aria-hidden", "true"); scrim.classList.remove("is-open"); };
-    document.querySelectorAll("[data-open-categories]").forEach((button) => button.addEventListener("click", open));
+    const categorySearch = panel?.querySelector("[data-category-search]");
+    const backgroundNodes = document.querySelectorAll(".site-header, #main, .bottom-nav");
+    let drawerOrigin = null;
+    const setBackgroundInert = (isOpen) => backgroundNodes.forEach((node) => node.toggleAttribute("inert", isOpen));
+    const open = (origin) => {
+      if (!panel || !scrim) return;
+      drawerOrigin = origin || document.activeElement;
+      panel.hidden = false;
+      panel.removeAttribute("inert");
+      panel.classList.add("is-open");
+      panel.setAttribute("aria-hidden", "false");
+      scrim.hidden = false;
+      scrim.classList.add("is-open");
+      setBackgroundInert(true);
+      document.body.classList.add("drawer-open");
+      categorySearch.focus();
+    };
+    const close = () => {
+      if (!panel || !scrim) return;
+      panel.classList.remove("is-open");
+      panel.setAttribute("aria-hidden", "true");
+      panel.setAttribute("inert", "");
+      panel.hidden = true;
+      scrim.classList.remove("is-open");
+      scrim.hidden = true;
+      setBackgroundInert(false);
+      document.body.classList.remove("drawer-open");
+      drawerOrigin?.focus();
+      drawerOrigin = null;
+    };
+    const trapDrawerFocus = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); close(); return; }
+      if (event.key !== "Tab") return;
+      const focusable = Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), [href]'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    panel?.addEventListener("keydown", trapDrawerFocus);
+    document.querySelectorAll("[data-open-categories]").forEach((button) => button.addEventListener("click", (event) => open(event.currentTarget)));
     document.querySelectorAll("[data-close-categories]").forEach((button) => button.addEventListener("click", close));
     document.querySelector("[data-category-search]")?.addEventListener("input", (event) => {
       const needle = normalize(event.currentTarget.value);
       document.querySelectorAll(".category-item").forEach((item) => { item.hidden = Boolean(needle) && !normalize(item.textContent).includes(needle); });
     });
     document.querySelectorAll("[data-category]").forEach((button) => button.addEventListener("click", () => {
-      const params = new URLSearchParams(location.search);
-      params.delete("product"); params.delete("word"); params.set("gc_cd", button.dataset.category);
+      const params = categoryNavigationParams(new URLSearchParams(location.search), button.dataset.category);
       location.href = `index.html?${params}`;
     }));
     document.querySelector("[data-search-form]")?.addEventListener("submit", (event) => {
       event.preventDefault();
-      const params = new URLSearchParams(location.search);
       const word = document.querySelector("#word").value.trim();
-      params.delete("product"); params.set("gc_cd", "all");
-      if (word) params.set("word", word); else params.delete("word");
+      const params = searchNavigationParams(new URLSearchParams(location.search), word);
       location.href = `index.html?${params}`;
     });
     document.querySelectorAll("[data-focus-search]").forEach((button) => button.addEventListener("click", () => { document.querySelector("#word")?.focus(); document.querySelector("#word")?.scrollIntoView({ block: "center" }); }));
     document.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => {
       const replacement = document.createElement("span"); replacement.className = "image-placeholder"; replacement.textContent = "画像を準備中"; image.replaceWith(replacement);
     }, { once: true }));
-    if (new URLSearchParams(location.search).get("open") === "categories") open();
+    const initialParams = new URLSearchParams(location.search);
+    if (initialParams.get("open") === "categories") {
+      initialParams.delete("open");
+      history.replaceState(null, "", `${location.pathname}${initialParams.toString() ? `?${initialParams}` : ""}${location.hash}`);
+      open(null);
+    }
   }
 
-  const api = { listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, productCard, escapeHtml };
+  const api = { listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, decodeWarningProductCodes, safeDescription, productCard, renderDetail, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {
-    fetch("./data/catalog.json", { cache: "no-store" })
-      .then((response) => { if (!response.ok) throw new Error("catalog load failed"); return response.json(); })
-      .then((catalog) => {
+    Promise.all([
+      fetch("./data/catalog.json", { cache: "no-store" }),
+      fetch("./data/catalog-meta.json", { cache: "no-store" })
+    ])
+      .then(async ([catalogResponse, metaResponse]) => {
+        if (!catalogResponse.ok || !metaResponse.ok) throw new Error("catalog load failed");
+        return [await catalogResponse.json(), await metaResponse.json()];
+      })
+      .then(([catalog, meta]) => {
         const params = new URLSearchParams(location.search);
-        document.querySelector("#app").innerHTML = params.has("product") ? renderDetail(catalog, params.get("product")) : renderCatalog(catalog, params);
+        document.querySelector("#app").innerHTML = params.has("product") ? renderDetail(catalog, meta, params.get("product")) : renderCatalog(catalog, params);
         bindCatalogEvents();
       })
       .catch(() => { document.querySelector("#app").innerHTML = '<main class="load-error"><h1>商品を読み込めませんでした</h1><p>時間をおいて、もう一度お試しください。</p></main>'; });
