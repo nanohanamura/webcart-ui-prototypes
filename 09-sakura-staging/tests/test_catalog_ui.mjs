@@ -228,10 +228,10 @@ test("search anchor clears the sticky header when scrolled into view", () => {
   assert.match(css, /#word,\.search-form\s*\{[^}]*scroll-margin-top:\s*(?:9[0-9]|[1-9][0-9]{2,})px/s);
 });
 
-test("catalog task has no order, login, database, NILE, CSV, mail, or external write connection", () => {
+test("catalog and prototype cart have no order, login, database, NILE, CSV, mail, or external write connection", () => {
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
   const { source } = loadHelpers();
   const combined = `${html}\n${source}`;
   assert.doesNotMatch(combined, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|<form[^>]+action=/i);
-  assert.doesNotMatch(combined, /localStorage|sessionStorage/);
+  assert.doesNotMatch(combined, /sessionStorage/);
 });
