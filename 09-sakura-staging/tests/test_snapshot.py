@@ -1,6 +1,8 @@
 import datetime
 import decimal
+import hashlib
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -339,6 +341,52 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(first_catalog, second_catalog)
         self.assertEqual([503, 501, 502], [row["SHOHINCD"] for row in catalog["products"]])
         self.assertEqual([44, 45], [row["SHOHINBUNRUICD"] for row in catalog["categories"]])
+
+    def test_snapshot_id_matches_catalog_content_and_is_order_independent(self):
+        ordered = payload()
+        reversed_input = json.loads(json.dumps(ordered, ensure_ascii=False))
+        reversed_input["products"].reverse()
+        reversed_input["categories"].reverse()
+        changed = json.loads(json.dumps(ordered, ensure_ascii=False))
+        changed["products"][0]["SHOHINNM"] = "変更後の商品名"
+
+        with tempfile.TemporaryDirectory() as first, \
+                tempfile.TemporaryDirectory() as second, \
+                tempfile.TemporaryDirectory() as third:
+            build_snapshot.build_snapshot(ordered, Path(first))
+            build_snapshot.build_snapshot(reversed_input, Path(second))
+            build_snapshot.build_snapshot(changed, Path(third))
+            first_catalog = json.loads(
+                (Path(first) / "catalog.json").read_text(encoding="utf-8")
+            )
+            first_meta = json.loads(
+                (Path(first) / "catalog-meta.json").read_text(encoding="utf-8")
+            )
+            second_catalog = json.loads(
+                (Path(second) / "catalog.json").read_text(encoding="utf-8")
+            )
+            second_meta = json.loads(
+                (Path(second) / "catalog-meta.json").read_text(encoding="utf-8")
+            )
+            changed_catalog = json.loads(
+                (Path(third) / "catalog.json").read_text(encoding="utf-8")
+            )
+
+        snapshot_id = first_catalog.pop("snapshot_id")
+        canonical = json.dumps(
+            first_catalog,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        expected = "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+        self.assertRegex(snapshot_id, re.compile(r"\Asha256:[0-9a-f]{64}\Z"))
+        self.assertEqual(expected, snapshot_id)
+        self.assertEqual(snapshot_id, first_meta["snapshot_id"])
+        self.assertEqual(snapshot_id, second_catalog["snapshot_id"])
+        self.assertEqual(snapshot_id, second_meta["snapshot_id"])
+        self.assertNotEqual(snapshot_id, changed_catalog["snapshot_id"])
 
     def test_remote_export_contains_only_fixed_select_sql(self):
         statements = (remote_export.PRODUCT_SQL, remote_export.CATEGORY_SQL)

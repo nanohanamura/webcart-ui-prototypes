@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -202,6 +203,16 @@ def _json_bytes(value):
     ).encode("utf-8")
 
 
+def _snapshot_id(catalog):
+    canonical = json.dumps(
+        catalog,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(canonical).hexdigest()
+
+
 def _stage_bytes(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
@@ -348,11 +359,14 @@ def build_snapshot(payload, output_dir):
         "products": products,
         "categories": categories,
     }
+    snapshot_id = _snapshot_id(catalog)
+    catalog["snapshot_id"] = snapshot_id
     generated_at = datetime.datetime.now(datetime.timezone.utc).replace(
         microsecond=0
     ).isoformat().replace("+00:00", "Z")
     meta = {
         "schema_version": SCHEMA_VERSION,
+        "snapshot_id": snapshot_id,
         "generated_at": generated_at,
         "product_count": len(products),
         "category_count": len(categories),
