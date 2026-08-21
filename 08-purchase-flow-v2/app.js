@@ -4,6 +4,7 @@
   const catalog = window.NANOHANA_CATALOG;
   const page = document.body.dataset.page;
   const stateKey = "nanohana-purchase-flow-v2";
+  const officialHomeUrl = "https://www.nano87.com/";
   const defaultCustomer = {
     name: "テスト購入者",
     postal: "000-0000",
@@ -49,6 +50,7 @@
   }
 
   let state = loadState();
+  let compactHeaderScrollHandler = null;
   let activeCategory = new URLSearchParams(location.search).get("gc_cd") || "0";
   let query = new URLSearchParams(location.search).get("word") || "";
   const save = () => localStorage.setItem(stateKey, JSON.stringify(state));
@@ -60,6 +62,7 @@
   const cartTotal = () => Object.entries(state.cart).reduce((sum, [code, qty]) => sum + (product(code)?.price || 0) * qty, 0);
   const cartItems = () => Object.entries(state.cart).map(([code, qty]) => ({item: product(code), qty})).filter(({item}) => item);
   const imageUrl = (item) => `../${item.image}`;
+  const productUrl = (item) => `product.html?code=${encodeURIComponent(item.code)}`;
 
   const icons = {
     menu: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>`,
@@ -72,13 +75,16 @@
     return `<a class="skip-link" href="#main">本文へ移動</a><div class="prototype-ribbon">購入フロー試作08　実際の注文・ログイン・メール送信は行いません</div>
       <header class="site-header">
         <div class="header-main">
-          <button class="header-action menu-action" type="button" data-category-trigger>${icons.menu}<span>カテゴリ</span></button>
+          <a class="header-action official-home" href="${officialHomeUrl}"><span>菜の花村<br>ホームへ</span></a>
           <a class="brand" href="index.html"><strong>菜の花村</strong><small>自然食品のWebカート</small></a>
           <a class="header-action cart-action" href="cart.html">${icons.cart}<span>カート</span><b class="cart-badge" data-cart-count>${cartCount()}</b></a>
         </div>
         ${search ? `<div class="search-area"><form class="search-form" data-search-form role="search"><label class="sr-only" for="word">商品を検索</label><input id="word" name="word" type="search" value="${esc(query)}" placeholder="商品名・規格・商品コード"><button type="submit">${icons.search}<span>検索</span></button></form></div>` : ""}
-        <nav class="desktop-nav" aria-label="主なメニュー"><a href="index.html">商品一覧</a><button type="button" data-category-trigger>カテゴリー</button><a href="delivery-consultation.html">定期配達を始めたい方</a><a href="cart.html">カートを見る</a></nav>
-      </header>`;
+      </header>${compactHeader()}`;
+  }
+
+  function compactHeader() {
+    return `<div class="compact-header" data-compact-header aria-hidden="true" inert><div class="compact-header-inner"><a class="compact-brand" href="index.html"><strong>菜の花村</strong><small>お買い物</small></a><nav aria-label="スクロール時のメニュー"><a href="index.html">商品一覧</a><button type="button" data-category-trigger>カテゴリー</button><button type="button" data-focus-search>検索</button><a href="cart.html">カート <b data-cart-count>${cartCount()}</b></a></nav><a class="compact-home" href="${officialHomeUrl}">菜の花村ホームへ</a></div></div>`;
   }
 
   function bottomNav() {
@@ -108,12 +114,24 @@
   }
 
   function productCard(item, index) {
-    return `<article class="product-card" data-contract-fields="F_Gc_Cd,F_Gs_Cd,F_Name,F_Price,F_Ondo,F_Buy,F_Pg,F_Sum"><div class="product-image-wrap">${item.badge ? `<span>${esc(item.badge)}</span>` : ""}<img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="360" height="270" loading="${index < 4 ? "eager" : "lazy"}"></div><div class="product-copy"><p class="product-meta"><span>${esc(item.temp)}</span>商品コード ${esc(item.code)}</p><h3>${esc(item.name)}</h3><p class="spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><button class="buy-button" type="button" data-buy-code="${item.code}">カートに入れる</button></div></article>`;
+    return `<article class="product-card" data-contract-fields="F_Gc_Cd,F_Gs_Cd,F_Name,F_Price,F_Ondo,F_Buy,F_Pg,F_Sum"><div class="product-image-wrap">${item.badge ? `<span>${esc(item.badge)}</span>` : ""}<a class="product-image-link" href="${productUrl(item)}" aria-label="${esc(item.name)}の詳細を見る"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="360" height="270" loading="${index < 4 ? "eager" : "lazy"}"></a></div><div class="product-copy"><h2><a class="product-name-link" href="${productUrl(item)}">${esc(item.name)}</a></h2><p class="spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><p class="product-meta"><span>${esc(item.temp)}</span><small>商品コード ${esc(item.code)}</small></p><button class="buy-button" type="button" data-buy-code="${item.code}">カートに入れる</button></div></article>`;
   }
 
   function renderCatalog() {
-    document.querySelector("#app").innerHTML = `${header({search:true})}<main class="page-shell" id="main" tabindex="-1"><section class="market-tools"><div><p>商品を探す</p><h1>菜の花村の商品一覧</h1></div><button type="button" data-category-trigger>カテゴリーから探す</button></section><div class="popular-chips">${catalog.categories.slice(0, 7).map((item) => `<button type="button" class="${item.code === activeCategory ? "is-active" : ""}" data-gc-cd="${item.code}">${esc(item.name)}</button>`).join("")}</div><a class="delivery-link" href="delivery-consultation.html"><span>新しく定期配達を始めたい方</span><strong>電話相談の流れを見る →</strong></a><section class="selection-bar"><div><small>選択中のカテゴリー</small><strong data-active-category>${esc(category(activeCategory).name)}</strong></div><button type="button" data-category-trigger>変更</button></section><div class="filter-status ${query ? "is-visible" : ""}" data-filter-status>検索中：<strong>${esc(query)}</strong><button type="button" data-clear-search>解除</button></div><section class="products-section"><div class="section-heading"><h2>${esc(category(activeCategory).name)}</h2><p><b data-result-count>0</b>商品</p></div><div class="product-grid" data-products></div><div class="empty-state" hidden data-empty>該当する商品はありません。</div></section></main>${categoryPanel()}<div class="cart-notice" data-cart-notice role="status" aria-live="polite"><strong>カートに追加しました</strong><span data-added-name></span><div><button type="button" data-continue>買い物を続ける</button><a href="cart.html">カートを見る</a></div></div>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${header({search:true})}<main class="page-shell catalog-page" id="main" tabindex="-1"><a class="delivery-link" href="delivery-consultation.html"><span>初めて配達をご希望の方</span><strong>配達相談について →</strong></a><section class="category-summary"><div><h1 data-active-category>${esc(category(activeCategory).name)}</h1><p><b data-result-count>0</b>商品</p></div><button type="button" data-category-trigger>カテゴリー変更</button></section><div class="filter-status ${query ? "is-visible" : ""}" data-filter-status>検索中：<strong>${esc(query)}</strong><button type="button" data-clear-search>解除</button></div><section class="products-section" id="products"><div class="product-grid" data-products></div><div class="empty-state" hidden data-empty>該当する商品はありません。</div></section></main>${categoryPanel()}<div class="cart-notice" data-cart-notice role="status" aria-live="polite"><strong>カートに追加しました</strong><span data-added-name></span><div><button type="button" data-continue>買い物を続ける</button><a href="cart.html">カートを見る</a></div></div>${bottomNav()}`;
     renderProducts(); bindCommon(); bindCatalog();
+  }
+
+  function renderProductDetail() {
+    const code = new URLSearchParams(location.search).get("code") || "";
+    const item = product(code);
+    if (!item) {
+      document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html">← 商品一覧へ戻る</a><section class="empty-card"><h1>商品が見つかりません</h1><a class="primary-button" href="index.html">商品一覧へ</a></section></main>${bottomNav()}`;
+      bindCommon(); return;
+    }
+    document.querySelector("#app").innerHTML = `${header()}<main class="flow-main" id="main" tabindex="-1"><a class="back-link" href="index.html?gc_cd=${encodeURIComponent(item.gcCd)}#products">← 商品一覧へ戻る</a><article class="product-detail"><div class="product-detail-image"><img src="${imageUrl(item)}" alt="${esc(item.sourceName)}" width="720" height="540"></div><div class="product-detail-copy"><p class="product-detail-temp">${esc(item.temp)}</p><h1>${esc(item.name)}</h1><p class="product-detail-spec">${esc(item.spec)}</p><p class="price"><small>税込</small> ${money(item.price)}<small>円</small></p><p class="product-detail-code">商品コード ${esc(item.code)}</p><button class="primary-button" type="button" data-detail-buy="${item.code}">カートに入れる</button><a class="secondary-button" href="cart.html">カートを見る</a><p class="muted">比較用試作の商品詳細です。本番の注文は送信されません。</p></div></article></main>${bottomNav()}`;
+    bindCommon();
+    document.querySelector("[data-detail-buy]").addEventListener("click", () => { state.cart[item.code] = (state.cart[item.code] || 0) + 1; save(); updateCartCounts(); });
   }
 
   function renderProducts() {
@@ -145,7 +163,7 @@
   function removeItem(code) { delete state.cart[code]; save(); renderCart(); }
 
   function renderCustomerEntry() {
-    document.querySelector("#app").innerHTML = `${flowIntro("ご利用方法を選んでください", "", "cart.html", "カートへ戻る")}<div class="entry-layout"><section class="choice-card is-primary"><h2>Web会員CDをお持ちの方</h2><a class="primary-button" href="login.html">ログインして進む</a></section><section class="choice-card"><h2>初めてご注文する方</h2><div class="entry-actions"><a class="primary-button" href="customer-info.html" data-mode="new-shipping">一般発送で注文する</a><a class="secondary-button" href="delivery-consultation.html">定期配達を始めたい方</a></div></section></div></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("ご利用方法を選んでください", "", "cart.html", "カートへ戻る")}<div class="entry-layout"><section class="choice-card is-primary"><h2>Web会員CDをお持ちの方</h2><a class="primary-button" href="login.html">ログインして進む</a></section><section class="choice-card"><h2>初めてご注文する方</h2><div class="entry-actions"><a class="primary-button" href="customer-info.html" data-mode="new-shipping">一般発送で注文する</a><a class="secondary-button" href="delivery-consultation.html">初めて配達をご希望の方</a></div></section></div></main>${bottomNav()}`;
     bindCommon();
     document.querySelector("[data-mode='new-shipping']").addEventListener("click", () => { state.customerMode = "new-shipping"; state.loggedIn = false; save(); });
   }
@@ -202,7 +220,7 @@
 
   function renderConsultation() {
     state.customerMode = ""; save();
-    document.querySelector("#app").innerHTML = `${flowIntro("新しく定期配達を始めたい方へ", "配達地域と曜日を確認するため、最初に菜の花村へ電話でご相談ください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="consult-card"><p class="choice-label">電話相談</p><h2>定期配達を始めるまで</h2><ol><li><span>1</span><div><strong>配達先の地域を確認</strong><p>住所をもとに配達可能地域を確認します。</p></div></li><li><span>2</span><div><strong>配達曜日を相談</strong><p>地域と配達コースに合わせて曜日を調整します。</p></div></li><li><span>3</span><div><strong>Web会員登録をご案内</strong><p>登録後、Webカートから次回配達分を注文できます。</p></div></li></ol><div class="phone-guide"><strong>菜の花村へお電話ください</strong><p>この試作では電話を発信しません。実際の連絡先は本番案内で表示します。</p></div><a class="secondary-button" href="customer-entry.html">ご利用確認へ戻る</a></section></main>${bottomNav()}`;
+    document.querySelector("#app").innerHTML = `${flowIntro("初めて配達をご希望の方へ", "配達地域と曜日を確認するため、最初に菜の花村へ電話でご相談ください。", "customer-entry.html", "ご利用確認へ戻る")}<section class="consult-card"><p class="choice-label">電話相談</p><h2>配達を始めるまで</h2><ol><li><span>1</span><div><strong>配達先の地域を確認</strong><p>住所をもとに配達可能地域を確認します。</p></div></li><li><span>2</span><div><strong>配達曜日を相談</strong><p>地域と配達コースに合わせて曜日を調整します。</p></div></li><li><span>3</span><div><strong>Web会員登録をご案内</strong><p>登録後、Webカートから次回配達分を注文できます。</p></div></li></ol><div class="phone-guide"><strong>菜の花村へお電話ください</strong><p>この試作では電話を発信しません。実際の連絡先は本番案内で表示します。</p></div><a class="secondary-button" href="customer-entry.html">ご利用確認へ戻る</a></section></main>${bottomNav()}`;
     bindCommon();
   }
 
@@ -210,8 +228,11 @@
   function bindCommon() {
     updateCartCounts();
     document.querySelectorAll("[data-category-trigger]").forEach((button) => button.addEventListener("click", openCategories));
-    document.querySelectorAll("[data-focus-search]").forEach((button) => button.addEventListener("click", () => { location.href = "index.html#word"; }));
+    document.querySelectorAll("[data-focus-search]").forEach((button) => button.addEventListener("click", focusSearch));
+    bindCompactHeader();
   }
+  function focusSearch() { if (page !== "catalog") { location.href = "index.html#word"; return; } const input = document.querySelector("#word"); input?.scrollIntoView({block:"center"}); input?.focus(); }
+  function bindCompactHeader() { const bar = document.querySelector("[data-compact-header]"); let ticking = false; const update = () => { const visible = scrollY > 150; document.body.classList.toggle("has-compact-header", visible); bar?.toggleAttribute("inert", !visible); bar?.setAttribute("aria-hidden", String(!visible)); ticking = false; }; if (compactHeaderScrollHandler) removeEventListener("scroll", compactHeaderScrollHandler); compactHeaderScrollHandler = () => { if (!ticking) { requestAnimationFrame(update); ticking = true; } }; addEventListener("scroll", compactHeaderScrollHandler, {passive:true}); update(); }
   function openCategories() { const panel = document.querySelector("[data-category-panel]"); if (!panel) { location.href = "index.html?open=categories"; return; } panel.classList.add("is-open"); panel.setAttribute("aria-hidden", "false"); document.querySelector("[data-scrim]").classList.add("is-open"); }
   function closeCategories() { document.querySelector("[data-category-panel]")?.classList.remove("is-open"); document.querySelector("[data-category-panel]")?.setAttribute("aria-hidden", "true"); document.querySelector("[data-scrim]")?.classList.remove("is-open"); }
   function selectCategory(code) { activeCategory = code; const params = new URLSearchParams(); if (code !== "0") params.set("gc_cd", code); if (query) params.set("word", query); location.href = `index.html${params.toString() ? `?${params}` : ""}#products`; }
@@ -226,6 +247,6 @@
     if (new URLSearchParams(location.search).get("open") === "categories") openCategories();
   }
 
-  const renderers = {catalog: renderCatalog, cart: renderCart, "customer-entry": renderCustomerEntry, login: renderLogin, "customer-info": renderCustomerInfo, "delivery-info": renderDeliveryInfo, "delivery-consultation": renderConsultation, confirm: renderConfirm, complete: renderComplete};
+  const renderers = {catalog: renderCatalog, product: renderProductDetail, cart: renderCart, "customer-entry": renderCustomerEntry, login: renderLogin, "customer-info": renderCustomerInfo, "delivery-info": renderDeliveryInfo, "delivery-consultation": renderConsultation, confirm: renderConfirm, complete: renderComplete};
   (renderers[page] || renderCatalog)();
 })();
