@@ -155,6 +155,32 @@ test("stable decode-warning product keys protect descriptions without using raw 
   assert.doesNotMatch(source, /decode_warnings/);
 });
 
+test("warning metadata is trusted only when both files share one valid snapshot id", () => {
+  const { api } = loadHelpers();
+  assert.equal(api.snapshotMetadataMatches(catalog, catalogMeta), true);
+  assert.match(catalog.snapshot_id, /^sha256:[0-9a-f]{64}$/);
+
+  const mismatchedMeta = { ...catalogMeta, snapshot_id: `sha256:${"0".repeat(64)}` };
+  assert.equal(api.snapshotMetadataMatches(catalog, mismatchedMeta), false);
+  assert.equal(api.decodeWarningProductCodes(catalog, mismatchedMeta), null);
+
+  const oldCatalog = { ...catalog };
+  delete oldCatalog.snapshot_id;
+  const oldMeta = { ...catalogMeta };
+  delete oldMeta.snapshot_id;
+  assert.equal(api.snapshotMetadataMatches(oldCatalog, oldMeta), false, "two old files without ids must not be trusted");
+  assert.equal(api.snapshotMetadataMatches(oldCatalog, catalogMeta), false, "old catalog and new meta must fail closed");
+  assert.equal(api.snapshotMetadataMatches(catalog, oldMeta), false, "new catalog and old meta must fail closed");
+
+  const malformedMeta = { ...catalogMeta, snapshot_id: catalogMeta.snapshot_id.toUpperCase() };
+  assert.equal(api.snapshotMetadataMatches(catalog, malformedMeta), false);
+  assert.equal(api.snapshotMetadataMatches({ ...catalog, snapshot_id: malformedMeta.snapshot_id }, malformedMeta), false, "matching malformed ids must not be trusted");
+  const normal = catalog.products.find((product) => product.DELFLG === 0 && product.SHOSAISETSUMEI && !api.decodeWarningProductCodes(catalog, catalogMeta).has(String(product.SHOHINCD)));
+  const mismatchedDetail = api.renderDetail(catalog, mismatchedMeta, String(normal.SHOHINCD));
+  assert.match(mismatchedDetail, /商品説明は確認中です/);
+  assert.doesNotMatch(mismatchedDetail, new RegExp(normal.SHOSAISETSUMEI.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+});
+
 test("missing warning metadata keeps the catalog usable and fails closed on descriptions", () => {
   const { api, source } = loadHelpers();
   const normal = catalog.products.find((product) => product.DELFLG === 0 && product.SHOSAISETSUMEI);

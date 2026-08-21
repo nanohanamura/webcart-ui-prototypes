@@ -97,8 +97,17 @@
     return params;
   }
 
+  function snapshotMetadataMatches(catalog, meta) {
+    const catalogId = catalog && catalog.snapshot_id;
+    const metaId = meta && meta.snapshot_id;
+    return typeof catalogId === "string"
+      && typeof metaId === "string"
+      && /^sha256:[0-9a-f]{64}$/.test(catalogId)
+      && catalogId === metaId;
+  }
+
   function decodeWarningProductCodes(catalog, meta) {
-    if (!meta || !Array.isArray(meta.decode_warning_products)) return null;
+    if (!snapshotMetadataMatches(catalog, meta) || !Array.isArray(meta.decode_warning_products)) return null;
     const codes = new Set();
     const products = Array.isArray(catalog && catalog.products) ? catalog.products : [];
     const knownCodes = new Set(products.map((product) => text(product.SHOHINCD)));
@@ -320,7 +329,7 @@
     }
   }
 
-  const api = { listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, decodeWarningProductCodes, safeDescription, productCard, renderDetail, escapeHtml };
+  const api = { listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, productCard, renderDetail, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {
