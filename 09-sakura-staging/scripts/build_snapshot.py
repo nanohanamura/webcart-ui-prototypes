@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLIC_IMAGE_BASE = "https://nano87.sakura.ne.jp/webcart/img"
 ALLOWED_DELFLG = (0, 1, 2)
 
@@ -44,6 +44,12 @@ OPTIONAL_STRING_CATEGORY_FIELDS = tuple(
 SAFE_IMAGE_NAME = re.compile(
     r"\A[A-Za-z0-9][A-Za-z0-9._-]{0,250}\.(?:jpg|jpeg|png|gif|webp)\Z",
     re.IGNORECASE,
+)
+DECODE_WARNING_PATTERN = re.compile(
+    r"\Aproducts\[(0|[1-9][0-9]*)\]\.([A-Z][A-Z0-9_]*)\Z"
+)
+ALLOWED_DECODE_WARNING_FIELDS = frozenset(
+    ("SHOSAISETSUMEI", "KIKAKUSETSUMEI")
 )
 
 
@@ -97,6 +103,28 @@ def _validate_category(row, index):
         raise SnapshotValidationError("%s has unsafe GAZOFILENM" % label)
 
 
+def _validate_decode_warnings(warnings, product_count):
+    if not isinstance(warnings, list):
+        raise SnapshotValidationError("decode_warnings must be a list")
+    seen = set()
+    for warning in warnings:
+        if not isinstance(warning, str):
+            raise SnapshotValidationError("decode warning format is invalid")
+        match = DECODE_WARNING_PATTERN.fullmatch(warning)
+        if match is None:
+            raise SnapshotValidationError("decode warning format is invalid")
+        field = match.group(2)
+        if field not in ALLOWED_DECODE_WARNING_FIELDS:
+            raise SnapshotValidationError(
+                "decode warning must name an allowed optional field"
+            )
+        if warning in seen:
+            raise SnapshotValidationError("duplicate decode warning")
+        seen.add(warning)
+        if int(match.group(1)) >= product_count:
+            raise SnapshotValidationError("decode warning row is out of range")
+
+
 def _image_urls(filename):
     if filename is None or filename == "":
         return None, None
@@ -110,10 +138,14 @@ def _image_urls(filename):
 
 
 def validate_payload(payload):
-    expected_keys = {"schema_version", "counts", "products", "categories"}
+    expected_keys = {
+        "schema_version", "counts", "products", "categories",
+        "decode_warnings",
+    }
     if not isinstance(payload, dict) or set(payload) != expected_keys:
         raise SnapshotValidationError(
-            "input must contain only schema_version, counts, products, and categories"
+            "input must contain only schema_version, counts, products, "
+            "categories, and decode_warnings"
         )
     if not _is_int(payload["schema_version"]) or payload["schema_version"] != SCHEMA_VERSION:
         raise SnapshotValidationError("unsupported schema_version")
@@ -121,6 +153,9 @@ def validate_payload(payload):
         raise SnapshotValidationError("products must be a list")
     if not isinstance(payload["categories"], list):
         raise SnapshotValidationError("categories must be a list")
+    _validate_decode_warnings(
+        payload["decode_warnings"], len(payload["products"])
+    )
     counts = payload["counts"]
     if (
         not isinstance(counts, dict)
@@ -281,6 +316,8 @@ def build_snapshot(payload, output_dir):
         "category_count": len(categories),
         "allowed_delflg": list(ALLOWED_DELFLG),
         "visibility_contract": "UI displays only products where DELFLG == 0",
+        "decode_warning_count": len(payload["decode_warnings"]),
+        "decode_warnings": list(payload["decode_warnings"]),
     }
     output_dir = Path(output_dir)
     _publish_json_pair(

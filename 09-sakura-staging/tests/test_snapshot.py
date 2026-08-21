@@ -35,8 +35,9 @@ def product(code=501, category=44, delflg=0, image="0501.jpg"):
 
 def payload():
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "counts": {"products": 2, "categories": 1},
+        "decode_warnings": [],
         "products": [product(), product(502, delflg=1, image=None)],
         "categories": [{
             "SHOHINBUNRUICD": 44,
@@ -125,6 +126,39 @@ class SnapshotContractTests(unittest.TestCase):
         data = payload()
         data["counts"]["products"] = 999
         self.assert_rejected(data, "product count")
+
+    def test_schema_v2_decode_warnings_are_validated_and_written_to_meta(self):
+        data = payload()
+        data["schema_version"] = 2
+        data["decode_warnings"] = ["products[0].SHOSAISETSUMEI"]
+        data["products"][0]["SHOSAISETSUMEI"] = "説明の末尾�"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            build_snapshot.build_snapshot(data, Path(tmp))
+            catalog = json.loads((Path(tmp) / "catalog.json").read_text(encoding="utf-8"))
+            meta_text = (Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8")
+            meta = json.loads(meta_text)
+
+        self.assertEqual("説明の末尾�", catalog["products"][0]["SHOSAISETSUMEI"])
+        self.assertEqual(1, meta["decode_warning_count"])
+        self.assertEqual(
+            ["products[0].SHOSAISETSUMEI"], meta["decode_warnings"]
+        )
+        self.assertNotIn("説明の末尾", meta_text)
+
+    def test_decode_warnings_reject_malformed_forbidden_duplicate_and_out_of_range(self):
+        invalid_warnings = (
+            (["products[0].SHOHINNM"], "allowed optional field"),
+            (["products[0].SHOSAISETSUMEI", "products[0].SHOSAISETSUMEI"], "duplicate"),
+            (["products[0].SHOSAISETSUMEI=raw"], "format"),
+            (["products[99].KIKAKUSETSUMEI"], "out of range"),
+        )
+        for warnings, message in invalid_warnings:
+            with self.subTest(warnings=warnings):
+                data = payload()
+                data["schema_version"] = 2
+                data["decode_warnings"] = warnings
+                self.assert_rejected(data, message)
 
     def test_boolean_schema_version_is_rejected(self):
         data = payload()
@@ -381,6 +415,79 @@ class SnapshotContractTests(unittest.TestCase):
                     str(raised.exception),
                 )
                 self.assertNotIn(bad_value, str(raised.exception))
+
+    def test_remote_export_replaces_only_optional_product_descriptions_and_warns(self):
+        bad_detail = b"detail\xec".decode("latin1")
+        bad_spec = b"spec\x81".decode("latin1")
+        product_row = (
+            501, "item", 280, 44, 1, 0, 1, 0, 0,
+            bad_detail, bad_spec, "0501.jpg", None, 0,
+            datetime.datetime(2026, 8, 22, 9, 0),
+            datetime.datetime(2026, 8, 22, 9, 0),
+        )
+        category_row = (44, "title", "subtitle", "comment", None, None, None, None)
+
+        class FakeCursor:
+            current_sql = None
+
+            def execute(self, sql):
+                self.current_sql = sql
+
+            def fetchall(self):
+                if self.current_sql == remote_export.PRODUCT_SQL:
+                    return [product_row]
+                return [category_row]
+
+            def close(self):
+                pass
+
+        class FakeConnection:
+            encoding = "euc_jp"
+
+            @staticmethod
+            def cursor():
+                return FakeCursor()
+
+            @staticmethod
+            def close():
+                pass
+
+        class FakeCore:
+            @staticmethod
+            def default_env_path():
+                return "/unused/.env"
+
+            @staticmethod
+            def load_env(_path):
+                return {}
+
+            @staticmethod
+            def connect(_env):
+                return FakeConnection()
+
+        try:
+            result = remote_export.export_catalog(FakeCore())
+        except ValueError as error:
+            self.fail("optional descriptions must not stop export: %s" % error)
+
+        self.assertEqual(2, result["schema_version"])
+        self.assertEqual(
+            b"detail\xec".decode("euc_jp", errors="replace"),
+            result["products"][0]["SHOSAISETSUMEI"],
+        )
+        self.assertEqual(
+            b"spec\x81".decode("euc_jp", errors="replace"),
+            result["products"][0]["KIKAKUSETSUMEI"],
+        )
+        self.assertEqual(
+            [
+                "products[0].SHOSAISETSUMEI",
+                "products[0].KIKAKUSETSUMEI",
+            ],
+            result["decode_warnings"],
+        )
+        self.assertNotIn(bad_detail, json.dumps(result, ensure_ascii=False))
+        self.assertNotIn(bad_spec, json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":
