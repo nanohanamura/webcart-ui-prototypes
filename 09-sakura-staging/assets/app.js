@@ -6,6 +6,7 @@
   const CART_STORAGE_VERSION = "v1";
   const numberFormat = new Intl.NumberFormat("ja-JP");
   const fallbackStorageByOwner = new WeakMap();
+  let flowState = {};
 
   function text(value) {
     return value === null || value === undefined ? "" : String(value);
@@ -330,7 +331,7 @@
         <input id="word" name="word" type="search" value="${escapeHtml(word)}" placeholder="商品コード・商品名・規格" autocomplete="off">
         <button type="submit">検索</button>
       </form>
-      <a class="delivery-guide" href="#delivery-guide"><span>初めて配達をご希望の方</span><strong>配達相談について ›</strong></a>
+      <a class="delivery-guide" href="index.html?flow=consult"><span>初めて配達をご希望の方</span><strong>配達相談について ›</strong></a>
       <section class="category-summary" aria-labelledby="products-title">
         <div><h1 id="products-title">${escapeHtml(word ? `「${word}」の検索結果` : selectedName)}</h1><p>${results.length}商品</p></div>
         <button type="button" data-open-categories>カテゴリー変更</button>
@@ -379,12 +380,147 @@
         <p class="line-subtotal">小計 <strong>${numberFormat.format(subtotal)}円</strong></p>
       </article>`;
     }).join("");
-    return `<h1>カート</h1><div class="cart-layout"><div class="cart-lines">${lines}</div><aside class="cart-summary" aria-label="ご注文金額"><h2>ご注文金額</h2><p><span>商品種類</span><strong>${summary.lineCount}種類</strong></p><p><span>商品点数</span><strong>${summary.itemCount}点</strong></p><p class="cart-total"><span>合計</span><strong>${numberFormat.format(summary.subtotal)}円</strong></p><button class="checkout-button" type="button" data-checkout-hook disabled>購入手続きは次の試作工程で確認します</button><a class="secondary-button continue-shopping" href="index.html">買い物を続ける</a></aside></div>`;
+    return `<h1>カート</h1><div class="cart-layout"><div class="cart-lines">${lines}</div><aside class="cart-summary" aria-label="ご注文金額"><h2>ご注文金額</h2><p><span>商品種類</span><strong>${summary.lineCount}種類</strong></p><p><span>商品点数</span><strong>${summary.itemCount}点</strong></p><p class="cart-total"><span>合計</span><strong>${numberFormat.format(summary.subtotal)}円</strong></p><a class="checkout-button" href="index.html?flow=entry">購入手続きへ進む</a><a class="secondary-button continue-shopping" href="index.html">買い物を続ける</a></aside></div>`;
   }
 
   function renderCart(catalog, cart = {}) {
     const summary = cartSummary(cart, catalog);
     return `${header(summary.itemCount)}${cartLiveRegion()}<main id="main" class="cart-shell" tabindex="-1"><div class="cart-content">${cartContent(catalog, cart)}</div></main>${bottomNav(summary.itemCount)}`;
+  }
+
+  const FLOW_STEPS = ["カート", "ご利用確認", "お届け情報", "注文確認", "完了"];
+
+  function flowRouteForCustomerType(customerType) {
+    return {
+      "member-general": "login",
+      "member-delivery": "login",
+      "new-general": "orderer",
+      "new-delivery": "consult"
+    }[customerType] || "entry";
+  }
+
+  function nextFlowRoute(route, state = {}) {
+    if (route === "entry") return flowRouteForCustomerType(state.customerType);
+    if (route === "login" && /^member-(general|delivery)$/.test(text(state.customerType))) return "delivery";
+    if (route === "orderer" && state.customerType === "new-general") return "delivery";
+    if (route === "delivery" && state.customerType && state.customerType !== "new-delivery") return "confirm";
+    if (route === "confirm" && state.customerType) return "complete";
+    return "entry";
+  }
+
+  function flowStepForRoute(route) {
+    if (route === "entry" || route === "login" || route === "orderer" || route === "consult") return 2;
+    if (route === "delivery") return 3;
+    if (route === "confirm") return 4;
+    if (route === "complete") return 5;
+    return 2;
+  }
+
+  function flowStepper(route) {
+    const current = flowStepForRoute(route);
+    return `<ol class="flow-stepper" aria-label="購入手続き ${current}/5">${FLOW_STEPS.map((label, index) => {
+      const step = index + 1;
+      const className = step === current ? " is-current" : (step < current ? " is-done" : "");
+      return `<li class="${className.trim()}"${step === current ? ' aria-current="step"' : ""}><small>${step}</small><span>${label}</span></li>`;
+    }).join("")}</ol>`;
+  }
+
+  function flowFrame(catalog, cart, route, title, body, lead = "") {
+    const summary = cartSummary(cart, catalog);
+    return `${header(summary.itemCount)}<main id="main" class="flow-shell" tabindex="-1"><a class="back-link" href="index.html?cart=1">← カートへ戻る</a><header class="flow-heading"><h1>${escapeHtml(title)}</h1>${lead ? `<p>${escapeHtml(lead)}</p>` : ""}</header>${flowStepper(route)}${body}</main>${bottomNav(summary.itemCount)}`;
+  }
+
+  function flowEmpty(catalog, cart) {
+    return flowFrame(catalog, cart, "entry", "カートが空です", '<section class="flow-card flow-message"><p>商品一覧から商品を選んでください。</p><a class="flow-action secondary-button" href="index.html">商品一覧へ</a></section>');
+  }
+
+  function flowGuard(catalog, cart) {
+    return flowFrame(catalog, cart, "entry", "ご利用方法を選んでください", '<section class="flow-card flow-message"><p>ご利用方法の選択からやり直してください。</p><a class="flow-action secondary-button" href="index.html?flow=entry">ご利用方法を選ぶ</a></section>');
+  }
+
+  function flowEntry(catalog, cart) {
+    return flowFrame(catalog, cart, "entry", "ご利用方法を選んでください", `<div class="customer-choice-grid">
+      <section class="flow-card customer-choice"><h2>Web会員CDをお持ちの方</h2><button class="flow-action primary-flow-action" type="button" data-customer-type="member-general">ログインして進む</button></section>
+      <section class="flow-card customer-choice"><h2>初めてご注文する方</h2><div class="choice-actions"><button class="flow-action primary-flow-action" type="button" data-customer-type="new-general">一般発送で注文する</button><button class="flow-action outline-flow-action" type="button" data-customer-type="new-delivery">初めて配達をご希望の方</button></div></section>
+    </div>`);
+  }
+
+  function flowLogin(catalog, cart, state) {
+    const registeredType = state.customerType === "member-delivery" ? "member-delivery" : "member-general";
+    return flowFrame(catalog, cart, "login", "Web会員ログイン", `<form class="flow-card flow-form" data-flow-form="login">
+      <label>メールアドレスまたはWeb会員CD<input name="identifier" type="text" autocomplete="off" value="prototype-member@example.invalid" required></label>
+      <label>暗証番号<input name="pin" type="password" autocomplete="off" value="0000" required></label>
+      <fieldset><legend>試作で確認する登録状態</legend><label class="radio-line"><input type="radio" name="registeredType" value="member-general"${registeredType === "member-general" ? " checked" : ""}>一般発送の登録済み会員</label><label class="radio-line"><input type="radio" name="registeredType" value="member-delivery"${registeredType === "member-delivery" ? " checked" : ""}>定期配達の登録済み会員</label><p>本番ではログイン後の登録情報から自動判定する想定です。</p></fieldset>
+      <p class="prototype-data-note">表示している値は合成値です。入力内容は送信・保存されません。</p><button class="flow-action primary-flow-action" type="submit">登録情報を確認して進む</button>
+    </form>`);
+  }
+
+  function ordererFields(state = {}) {
+    const orderer = state.orderer || {};
+    return `<label>氏名<input name="name" type="text" value="${escapeHtml(orderer.name || "試作 太郎")}" required></label>
+      <label>メールアドレス<input name="email" type="email" value="${escapeHtml(orderer.email || "sample@example.invalid")}" required></label>
+      <label>郵便番号<input name="postal" type="text" value="${escapeHtml(orderer.postal || "000-0000")}" required></label>
+      <label>住所<input name="address" type="text" value="${escapeHtml(orderer.address || "試作用住所 1-2-3")}" required></label>
+      <label>電話番号<input name="phone" type="text" value="${escapeHtml(orderer.phone || "000-0000-0000")}" required></label>`;
+  }
+
+  function flowOrderer(catalog, cart, state) {
+    return flowFrame(catalog, cart, "orderer", "注文者情報", `<form class="flow-card flow-form" data-flow-form="orderer"><p class="prototype-data-warning"><strong>実在する個人情報は入力しないでください。</strong><br>入力内容はこの画面を閉じるまでの試作確認だけに使い、送信・保存しません。</p>${ordererFields(state)}<button class="flow-action primary-flow-action" type="submit">お届け情報へ進む</button></form>`);
+  }
+
+  function flowDelivery(catalog, cart, state) {
+    if (state.customerType === "member-delivery") {
+      return flowFrame(catalog, cart, "delivery", "お届け情報", `<form class="flow-card flow-form" data-flow-form="delivery"><section class="delivery-type-panel"><small>お届け方法</small><h2>登録済みの配達曜日で次回配達</h2></section><p>登録済みのお届け先へお届けする想定です。</p><p class="pending-confirmation">次回配達の確定内容は店長確認が必要です。</p><button class="flow-action primary-flow-action" type="submit">注文内容の確認へ</button></form>`);
+    }
+    return flowFrame(catalog, cart, "delivery", "お届け情報", `<form class="flow-card flow-form" data-flow-form="delivery"><section class="delivery-type-panel"><small>お届け方法</small><h2>一般発送のお届け先</h2></section><label class="checkbox-line"><input name="separate" type="checkbox" value="1">注文者と別の住所へ送る</label><div class="separate-address" data-separate-address hidden><p class="prototype-data-warning">実在する個人情報は入力しないでください。</p><label>お届け先氏名<input name="deliveryName" type="text" value="試作 お届け先"></label><label>郵便番号<input name="deliveryPostal" type="text" value="000-0000"></label><label>住所<input name="deliveryAddress" type="text" value="試作用お届け先 4-5-6"></label><label>電話番号<input name="deliveryPhone" type="text" value="000-0000-0000"></label></div><p class="pending-confirmation">送料・支払方法・一般発送のお届け区分は店長確認が必要です。</p><button class="flow-action primary-flow-action" type="submit">注文内容の確認へ</button></form>`);
+  }
+
+  function flowConsult(catalog, cart) {
+    return flowFrame(catalog, cart, "consult", "初めて配達をご希望の方", `<section class="flow-card consult-card"><p>新しく配達を始める場合は、店舗への電話相談が必要です。</p><ol><li><strong>配達先住所を確認</strong><span>店舗へ配達可能な地域か確認します。</span></li><li><strong>店長と配達員で配送可能曜日を相談</strong><span>利用者がWeb上で曜日を選ぶ仕組みではありません。</span></li><li><strong>店舗がWeb会員登録</strong><span>登録後にWeb会員CDをお渡しする想定です。</span></li></ol><p class="pending-confirmation">連絡先と案内方法は店長確認が必要です。</p><a class="flow-action secondary-button" href="index.html">商品一覧へ戻る</a></section>`);
+  }
+
+  function flowConfirmationLines(catalog, cart) {
+    const summary = cartSummary(cart, catalog);
+    return summary.lines.map(({ product, quantity, subtotal }) => `<li><span>${escapeHtml(product.SHOHINNM)} × ${quantity}</span><strong>${numberFormat.format(subtotal)}円</strong></li>`).join("");
+  }
+
+  function flowConfirm(catalog, cart, state) {
+    const summary = cartSummary(cart, catalog);
+    const isDelivery = state.customerType === "member-delivery";
+    const orderer = state.orderer || {};
+    const ordererText = orderer.name ? `${escapeHtml(orderer.name)}<br>${escapeHtml(orderer.postal)} ${escapeHtml(orderer.address)}<br>${escapeHtml(orderer.email)}` : "登録済みの会員情報（試作では表示省略）";
+    const deliveryText = isDelivery ? "登録済みの配達曜日で次回配達" : (state.delivery && state.delivery.separate ? "注文者と別のお届け先" : "注文者と同じ住所へ一般発送");
+    const pendingText = isDelivery
+      ? "支払方法・次回配達の確定内容は店長確認が必要です。"
+      : "送料・支払方法・一般発送のお届け区分は店長確認が必要です。";
+    return flowFrame(catalog, cart, "confirm", "注文内容を確認", `<div class="confirmation-grid"><section class="flow-card confirmation-section"><h2>商品確認</h2><ul class="confirmation-products">${flowConfirmationLines(catalog, cart)}</ul><p class="confirmation-total"><span>商品合計</span><strong>${numberFormat.format(summary.subtotal)}円</strong></p></section><section class="flow-card confirmation-section"><h2>注文者</h2><p>${ordererText}</p><h2>お届け</h2><p>${escapeHtml(deliveryText)}</p><p class="pending-confirmation">${pendingText}</p></section></div><div class="flow-footer-actions"><button class="flow-action outline-flow-action" type="button" data-flow-route="delivery">お届け情報へ戻る</button><button class="flow-action primary-flow-action" type="button" data-flow-confirm>試作の操作を完了する</button></div>`);
+  }
+
+  function flowComplete(catalog, cart) {
+    return flowFrame(catalog, cart, "complete", "操作確認が完了しました", '<section class="flow-card flow-message completion-card"><strong>実際の注文は送信されていません。</strong><p>この画面は店長確認用の試作です。注文番号の発行、メール送信、決済、基幹システムへの注文データ連携は行いません。</p><a class="flow-action secondary-button" href="index.html">商品一覧へ戻る</a></section>');
+  }
+
+  function flowStateSupportsRoute(route, state) {
+    if (route === "entry" || route === "consult") return true;
+    if (route === "login") return /^member-(general|delivery)$/.test(text(state.customerType));
+    if (route === "orderer") return state.customerType === "new-general";
+    if (route === "delivery") return Boolean(state.customerType) && state.customerType !== "new-delivery" && (state.customerType !== "new-general" || Boolean(state.orderer));
+    if (route === "confirm") return Boolean(state.customerType) && state.customerType !== "new-delivery" && Boolean(state.delivery);
+    if (route === "complete") return Boolean(state.customerType) && state.confirmed === true;
+    return false;
+  }
+
+  function renderFlow(catalog, cart = {}, requestedRoute = "entry", state = {}) {
+    const route = ["entry", "login", "orderer", "delivery", "confirm", "complete", "consult"].includes(requestedRoute) ? requestedRoute : "entry";
+    if (route !== "consult" && !cartSummary(cart, catalog).lines.length) return flowEmpty(catalog, cart);
+    if (!flowStateSupportsRoute(route, state)) return route === "entry" ? flowEntry(catalog, cart) : flowGuard(catalog, cart);
+    if (route === "entry") return flowEntry(catalog, cart);
+    if (route === "login") return flowLogin(catalog, cart, state);
+    if (route === "orderer") return flowOrderer(catalog, cart, state);
+    if (route === "delivery") return flowDelivery(catalog, cart, state);
+    if (route === "confirm") return flowConfirm(catalog, cart, state);
+    if (route === "complete") return flowComplete(catalog, cart);
+    return flowConsult(catalog, cart);
   }
 
   function bindCatalogEvents() {
@@ -519,7 +655,48 @@
     });
   }
 
-  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, escapeHtml };
+  function bindFlowEvents(renderPage) {
+    const navigate = (route) => {
+      history.pushState(null, "", `${location.pathname}?flow=${encodeURIComponent(route)}`);
+      renderPage();
+    };
+    document.querySelectorAll("[data-customer-type]").forEach((button) => button.addEventListener("click", () => {
+      flowState = { customerType: button.dataset.customerType };
+      navigate(flowRouteForCustomerType(flowState.customerType));
+    }));
+    document.querySelectorAll("[data-flow-route]").forEach((button) => button.addEventListener("click", () => navigate(button.dataset.flowRoute)));
+    document.querySelectorAll("[data-flow-form]").forEach((form) => form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const data = new global.FormData(form);
+      const formName = form.dataset.flowForm;
+      if (formName === "login") {
+        const registeredType = text(data.get("registeredType"));
+        flowState.customerType = /^member-(general|delivery)$/.test(registeredType) ? registeredType : "member-general";
+      } else if (formName === "orderer") {
+        flowState.orderer = {
+          name: text(data.get("name")), email: text(data.get("email")), postal: text(data.get("postal")),
+          address: text(data.get("address")), phone: text(data.get("phone"))
+        };
+      } else if (formName === "delivery") {
+        flowState.delivery = {
+          separate: data.get("separate") === "1", deliveryName: text(data.get("deliveryName")),
+          deliveryPostal: text(data.get("deliveryPostal")), deliveryAddress: text(data.get("deliveryAddress")),
+          deliveryPhone: text(data.get("deliveryPhone"))
+        };
+      }
+      navigate(nextFlowRoute(formName, flowState));
+    }));
+    document.querySelector("[name=separate]")?.addEventListener("change", (event) => {
+      const fields = document.querySelector("[data-separate-address]");
+      if (fields) fields.hidden = !event.currentTarget.checked;
+    });
+    document.querySelector("[data-flow-confirm]")?.addEventListener("click", () => {
+      flowState.confirmed = true;
+      navigate("complete");
+    });
+  }
+
+  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {
@@ -533,16 +710,24 @@
         .catch(() => null)
     ])
       .then(([catalog, meta]) => {
-        const params = new URLSearchParams(location.search);
         const storageKey = cartStorageKey(catalog.snapshot_id);
         const storage = resolveCartStorage(global);
-        const cart = loadCart(storage, storageKey, catalog);
-        document.querySelector("#app").innerHTML = params.has("cart")
-          ? renderCart(catalog, cart)
-          : (params.has("product") ? renderDetail(catalog, meta, params.get("product"), cart) : renderCatalog(catalog, params, cart));
-        bindCatalogEvents();
-        bindImageErrors();
+        let cart = loadCart(storage, storageKey, catalog);
+        const renderPage = () => {
+          const params = new URLSearchParams(location.search);
+          cart = loadCart(storage, storageKey, catalog);
+          document.querySelector("#app").innerHTML = params.has("flow")
+            ? renderFlow(catalog, cart, params.get("flow"), flowState)
+            : (params.has("cart")
+              ? renderCart(catalog, cart)
+              : (params.has("product") ? renderDetail(catalog, meta, params.get("product"), cart) : renderCatalog(catalog, params, cart)));
+          bindCatalogEvents();
+          bindImageErrors();
+          bindFlowEvents(renderPage);
+        };
+        renderPage();
         bindCartEvents(catalog, cart, storage, storageKey);
+        global.addEventListener("popstate", renderPage);
       })
       .catch(() => { document.querySelector("#app").innerHTML = '<main class="load-error"><h1>商品を読み込めませんでした</h1><p>時間をおいて、もう一度お試しください。</p></main>'; });
   }

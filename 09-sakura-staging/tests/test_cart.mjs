@@ -90,7 +90,7 @@ test("catalog and detail render the same current cart quantity", () => {
   assert.match(api.renderDetail(catalog, null, String(product.SHOHINCD), cart), /aria-label="数量 3"/);
 });
 
-test("cart page includes product, unit price, quantity, delete, subtotal, counts, total and safe next-step hook", () => {
+test("cart page includes product, unit price, quantity, delete, subtotal, counts, total and safe checkout entry", () => {
   const { api } = loadHelpers();
   const [product] = listedSample(1);
   const html = api.renderCart(catalog, { [product.SHOHINCD]: 2 });
@@ -101,8 +101,8 @@ test("cart page includes product, unit price, quantity, delete, subtotal, counts
   assert.match(html, /商品点数/);
   assert.match(html, /合計/);
   assert.match(html, /買い物を続ける/);
-  assert.match(html, /data-checkout-hook/);
-  assert.match(html, /disabled/);
+  assert.match(html, /href="index\.html\?flow=entry"/);
+  assert.match(html, />購入手続きへ進む</);
 });
 
 test("cart count and cart route are present in header and mobile navigation", () => {
