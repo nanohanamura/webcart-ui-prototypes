@@ -86,10 +86,46 @@ class SnapshotContractTests(unittest.TestCase):
         data["products"].append(product(501))
         self.assert_rejected(data, "duplicate SHOHINCD")
 
-    def test_unknown_category_is_rejected(self):
+    def test_unknown_categories_are_synthesized_after_originals_deterministically(self):
         data = payload()
+        original_category = dict(data["categories"][0])
         data["products"][0]["SHOHINBUNRUICD"] = 999
-        self.assert_rejected(data, "unknown category")
+        data["products"][1]["SHOHINBUNRUICD"] = 998
+        data["products"].append(product(503, category=999, delflg=1, image=None))
+        data["counts"]["products"] = 3
+        reversed_input = json.loads(json.dumps(data, ensure_ascii=False))
+        reversed_input["products"].reverse()
+
+        try:
+            with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+                build_snapshot.build_snapshot(data, Path(first))
+                build_snapshot.build_snapshot(reversed_input, Path(second))
+                first_catalog_bytes = (Path(first) / "catalog.json").read_bytes()
+                second_catalog_bytes = (Path(second) / "catalog.json").read_bytes()
+                catalog = json.loads(first_catalog_bytes)
+                meta = json.loads(
+                    (Path(first) / "catalog-meta.json").read_text(encoding="utf-8")
+                )
+        except build_snapshot.SnapshotValidationError as error:
+            self.fail("unknown categories must remain displayable: %s" % error)
+
+        self.assertEqual(first_catalog_bytes, second_catalog_bytes)
+        self.assertEqual(original_category, catalog["categories"][0])
+        self.assertEqual(
+            [44, 998, 999],
+            [row["SHOHINBUNRUICD"] for row in catalog["categories"]],
+        )
+        for row, code in zip(catalog["categories"][1:], (998, 999)):
+            self.assertEqual("分類名未登録", row["SHOHINBUNRUITITLE"])
+            self.assertEqual("分類コード %d" % code, row["SHOHINBUNRUISUBTITLE"])
+        self.assertEqual(
+            [999, 998, 999],
+            [row["SHOHINBUNRUICD"] for row in catalog["products"]],
+        )
+        self.assertEqual(3, meta["orphan_product_count"])
+        self.assertEqual(1, meta["listed_orphan_product_count"])
+        self.assertEqual(2, meta["synthesized_category_count"])
+        self.assertEqual([998, 999], meta["synthesized_category_codes"])
 
     def test_invalid_delflg_is_rejected(self):
         data = payload()

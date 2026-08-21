@@ -190,11 +190,6 @@ def validate_payload(payload):
         if code in product_codes:
             raise SnapshotValidationError("duplicate SHOHINCD: %s" % code)
         product_codes.add(code)
-        if item["SHOHINBUNRUICD"] not in category_codes:
-            raise SnapshotValidationError(
-                "unknown category %s for SHOHINCD %s" %
-                (item["SHOHINBUNRUICD"], code)
-            )
     if counts["products"] != len(payload["products"]):
         raise SnapshotValidationError("declared product count does not match rows")
     if counts["categories"] != len(payload["categories"]):
@@ -260,7 +255,6 @@ def _publish_json_pair(catalog_path, catalog, meta_path, meta):
     except Exception:
         os.unlink(staged_catalog)
         raise
-
     try:
         os.replace(staged_catalog, str(catalog_path))
         staged_catalog = None
@@ -289,6 +283,19 @@ def _publish_json_pair(catalog_path, catalog, meta_path, meta):
         raise
 
 
+def _synthesized_category(code):
+    return {
+        "SHOHINBUNRUICD": code,
+        "SHOHINBUNRUITITLE": "分類名未登録",
+        "SHOHINBUNRUISUBTITLE": "分類コード %d" % code,
+        "COMMENT": "",
+        "GAZOFILENM": None,
+        "CHUMONSHIMEKIRIBI": None,
+        "OTODOKEYOTEIBI": None,
+        "HYOJIKIGEN": None,
+    }
+
+
 def build_snapshot(payload, output_dir):
     validate_payload(payload)
     products = []
@@ -306,6 +313,20 @@ def build_snapshot(payload, output_dir):
             payload["categories"], key=lambda row: row["SHOHINBUNRUICD"]
         )
     ]
+    original_category_codes = {
+        category["SHOHINBUNRUICD"] for category in categories
+    }
+    orphan_products = [
+        item
+        for item in products
+        if item["SHOHINBUNRUICD"] not in original_category_codes
+    ]
+    synthesized_category_codes = sorted({
+        item["SHOHINBUNRUICD"] for item in orphan_products
+    })
+    categories.extend(
+        _synthesized_category(code) for code in synthesized_category_codes
+    )
 
     catalog = {
         "schema_version": SCHEMA_VERSION,
@@ -329,6 +350,12 @@ def build_snapshot(payload, output_dir):
             for item in products
             if item["DELFLG"] != 0 and item["BAIKA"] is None
         ),
+        "orphan_product_count": len(orphan_products),
+        "listed_orphan_product_count": sum(
+            1 for item in orphan_products if item["DELFLG"] == 0
+        ),
+        "synthesized_category_count": len(synthesized_category_codes),
+        "synthesized_category_codes": synthesized_category_codes,
     }
     output_dir = Path(output_dir)
     _publish_json_pair(
