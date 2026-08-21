@@ -15,3 +15,11 @@
 - 顧客・会員・注文・支払いの実データを取得しません。
 - 本番Webカートのファイル、DB、CSV仕様、NILEは変更しません。
 - 公開前に全テストと禁止接続検査を実行します。
+
+## さくらステージング配置
+
+`scripts/deploy_staging.sh --dry-run` は、公開対象6ファイル、商品件数、安全表示、禁止接続、テスト、SHA-256 manifestを確認するだけで、サーバーを変更しません。明示的な `--execute` のときだけ、固定先 `/home/nano87/www/staging/webcart-prototype/` へ配置します。
+
+初回は配置先が空いている場合だけ新規作成します。更新は、このスクリプトが残した管理markerとremote manifestの両方が一致する場合だけ許可します。更新前の版は `/home/nano87/codex-backups/webcart-prototype-UTC日時/` へ退避し、切り替えに失敗した場合は直前版を元の配置先へ戻します。並行配置は固定lockで拒否し、中断時は今回のstageだけを清掃します。
+
+公開先は `https://staging.nano87.com/webcart-prototype/` です。`tests/`、`scripts/`、README、`.env`、dotfile、試作07・08は配置対象に含めません。管理markerとremote manifestだけは、更新時の所有確認と転送検証のため配置先内に保持します。

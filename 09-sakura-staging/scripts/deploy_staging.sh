@@ -5,6 +5,9 @@ REMOTE_HOST='nano87@nano87.sakura.ne.jp'
 TARGET='/home/nano87/www/staging/webcart-prototype'
 BACKUP_ROOT='/home/nano87/codex-backups'
 PUBLIC_URL='https://staging.nano87.com/webcart-prototype/'
+LOCK='/home/nano87/www/staging/.webcart-prototype-deploy.lock'
+MARKER='.nanohana-webcart-prototype-managed'
+REMOTE_MANIFEST='.deploy-manifest.tsv'
 PUBLIC_FILES='index.html
 manager-review.html
 assets/app.js
@@ -13,6 +16,7 @@ data/catalog.json
 data/catalog-meta.json'
 
 ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+REMOTE_OPS="$ROOT/scripts/deploy_staging_remote.sh"
 MODE=${1:-}
 
 usage() {
@@ -56,6 +60,10 @@ file_sha256() {
 }
 
 preflight() {
+  [ -f "$REMOTE_OPS" ] || {
+    echo "リモート配置手順がありません。配置を停止します。" >&2
+    exit 1
+  }
   printf '%s\n' "$PUBLIC_FILES" | while IFS= read -r rel; do
     [ -f "$ROOT/$rel" ] || {
       echo "公開対象がありません: $rel" >&2
@@ -122,9 +130,18 @@ print_plan() {
 preflight
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/webcart-staging-deploy.XXXXXX")
-trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+trap 'rm -rf "$tmp_dir"' 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 manifest="$tmp_dir/manifest.tsv"
+marker_file="$tmp_dir/managed-marker"
 create_manifest "$manifest"
+printf 'nanohana-webcart-prototype-v1\ntarget=%s\n' "$TARGET" >"$marker_file"
+marker_size=$(file_size "$marker_file")
+marker_sha=$(file_sha256 "$marker_file")
+manifest_size=$(file_size "$manifest")
+manifest_sha=$(file_sha256 "$manifest")
 [ "$(wc -l <"$manifest" | tr -d ' ')" = 6 ] || {
   echo "配置manifestの件数が一致しません。" >&2
   exit 1
@@ -134,56 +151,45 @@ echo "ローカルmanifest: path / size / sha256 を6件生成・確認済み"
 
 [ "$MODE" = '--execute' ] || {
   echo "dry-run: サーバー変更は行っていません。"
+  rm -rf "$tmp_dir"
   exit 0
 }
 
 stamp=$(date -u '+%Y%m%dT%H%M%SZ')
-stage="/home/nano87/www/staging/.webcart-prototype-stage-$stamp-$$"
-backup="$BACKUP_ROOT/webcart-prototype-$stamp"
+random_part=$(basename "$tmp_dir" | tr -cd 'A-Za-z0-9._-')
+token="$stamp-$$-$random_part"
+stage="/home/nano87/www/staging/.webcart-prototype-stage-$token"
+backup="$BACKUP_ROOT/webcart-prototype-$token"
+remote_prepared=0
+deployment_complete=0
 
-ssh "$REMOTE_HOST" 'sh -s' -- "$TARGET" "$stage" <<'REMOTE_PREPARE'
-set -eu
-target=$1
-stage=$2
-case "$target" in /home/nano87/www/staging/webcart-prototype) ;; *) exit 70 ;; esac
-case "$stage" in /home/nano87/www/staging/.webcart-prototype-stage-*) ;; *) exit 71 ;; esac
-[ ! -e "$stage" ] || exit 72
-mkdir -p "$stage/assets" "$stage/data"
-REMOTE_PREPARE
+cleanup() {
+  rc=$?
+  trap - 0 HUP INT TERM
+  if [ "$remote_prepared" -eq 1 ] && [ "$deployment_complete" -ne 1 ]; then
+    if ! ssh "$REMOTE_HOST" 'sh -s' -- abort "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" <"$REMOTE_OPS"; then
+      echo "警告: 中断後のステージ清掃または復元に失敗しました。対象: $stage" >&2
+    fi
+  fi
+  rm -rf "$tmp_dir"
+  exit "$rc"
+}
+trap cleanup 0
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+ssh "$REMOTE_HOST" 'sh -s' -- prepare "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" <"$REMOTE_OPS"
+remote_prepared=1
 
 printf '%s\n' "$PUBLIC_FILES" | while IFS= read -r rel; do
   scp -p "$ROOT/$rel" "$REMOTE_HOST:$stage/$rel"
 done
+scp -p "$marker_file" "$REMOTE_HOST:$stage/$MARKER"
+scp -p "$manifest" "$REMOTE_HOST:$stage/$REMOTE_MANIFEST"
 
-ssh "$REMOTE_HOST" 'sh -s' <<REMOTE_FINALIZE
-set -eu
-target='$TARGET'
-stage='$stage'
-backup_root='$BACKUP_ROOT'
-backup='$backup'
-
-case "\$target" in /home/nano87/www/staging/webcart-prototype) ;; *) exit 80 ;; esac
-case "\$stage" in /home/nano87/www/staging/.webcart-prototype-stage-*) ;; *) exit 81 ;; esac
-case "\$backup" in /home/nano87/codex-backups/webcart-prototype-*) ;; *) exit 82 ;; esac
-
-for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json; do
-  [ -f "\$stage/\$rel" ] || exit 83
-done
-[ "\$(find "\$stage" -type f | wc -l | tr -d ' ')" = 6 ] || exit 84
-
-if [ -e "\$target" ]; then
-  mkdir -p "\$backup_root"
-  [ ! -e "\$backup" ] || exit 85
-  mv "\$target" "\$backup"
-  if ! mv "\$stage" "\$target"; then
-    mv "\$backup" "\$target"
-    exit 86
-  fi
-else
-  if ! mv "\$stage" "\$target"; then
-    exit 87
-  fi
-fi
-REMOTE_FINALIZE
+ssh "$REMOTE_HOST" 'sh -s' -- finalize "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token" \
+  "$marker_size" "$marker_sha" "$manifest_size" "$manifest_sha" <"$REMOTE_OPS"
+deployment_complete=1
 
 echo "配置完了: $PUBLIC_URL"
