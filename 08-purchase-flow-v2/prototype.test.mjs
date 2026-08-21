@@ -26,15 +26,20 @@ const pageNames = ["index", "product", "cart", "customer-entry", "login", "custo
 for (const pageName of pageNames) {
   const pageUrl = new URL(`${pageName}.html`, here);
   const pageHtml = fs.readFileSync(pageUrl, "utf8");
-  assert.match(pageHtml, /<script src="\.\.\/assets\/catalog\.js"><\/script>/, `${pageName}.html must load the existing catalog asset`);
+  assert.match(pageHtml, /<script src="catalog\.js"><\/script>/, `${pageName}.html must load the isolated prototype 08 catalog`);
 }
-assert.equal(fs.existsSync(new URL("../assets/catalog.js", here)), true, "catalog.js must exist at the referenced URL");
+assert.equal(fs.existsSync(new URL("catalog.js", here)), true, "prototype 08 catalog.js must exist");
 const catalogContext = {window: {}};
-vm.runInNewContext(fs.readFileSync(new URL("../assets/catalog.js", here), "utf8"), catalogContext);
+vm.runInNewContext(fs.readFileSync(new URL("catalog.js", here), "utf8"), catalogContext);
 assert.equal(catalogContext.window.NANOHANA_CATALOG.categories.length, 53, "all 53 observed categories must remain available");
-assert.equal(catalogContext.window.NANOHANA_CATALOG.products.length, 12, "the 12 observed prototype products must remain unchanged");
+assert.equal(catalogContext.window.NANOHANA_CATALOG.products.length, 12, "the agricultural processed-food prototype must contain 12 products");
+assert.ok(catalogContext.window.NANOHANA_CATALOG.products.every((item) => item.gcCd === "44"), "all default prototype products must belong to agricultural processed foods");
+assert.ok(catalogContext.window.NANOHANA_CATALOG.products.every((item) => !item.image.includes("dumy")), "all default products must use real product images");
+for (const item of catalogContext.window.NANOHANA_CATALOG.products) {
+  assert.equal(fs.existsSync(new URL(item.image, here)), true, `${item.image} must exist locally`);
+}
 
-assert.match(js, /nanohana-purchase-flow-v2/);
+assert.match(js, /nanohana-purchase-flow-v3/);
 assert.match(js, /existing-shipping/);
 assert.match(js, /existing-delivery/);
 assert.match(js, /new-shipping/);
@@ -63,9 +68,15 @@ assert.doesNotMatch(catalogRenderer, /market-tools/);
 assert.doesNotMatch(catalogRenderer, /popular-chips/);
 assert.doesNotMatch(catalogRenderer, /selection-bar/);
 assert.match(js, /const officialHomeUrl = "https:\/\/www\.nano87\.com\/"/);
+assert.match(js, /target="_blank" rel="noopener noreferrer"/);
+assert.match(js, /<small>お買い物ページ<\/small>/);
+assert.match(js, /get\("gc_cd"\) \|\| "44"/);
+assert.match(js, /params\.set\("gc_cd", code\)/);
+assert.match(js, /params\.set\("gc_cd", activeCategory\)/);
 assert.match(js, /product\.html\?code=/);
 assert.match(js, /class="product-image-link"/);
 assert.match(js, /class="product-name-link"/);
+assert.match(js, /width="600" height="700"/);
 assert.match(js, /function productQuantityControl\(item\)/);
 assert.match(js, /data-quantity-plus/);
 assert.match(js, /data-quantity-minus/);
@@ -108,6 +119,8 @@ assert.match(css, /--color-brand-soft:#E7EFE6/);
 assert.match(css, /--color-cta:#B85C2C/);
 assert.match(css, /--color-accent:#E6C84E/);
 assert.match(css, /--color-danger:#A32D2D/);
+assert.match(css, /--color-delivery-soft:#E7F4FA/);
+assert.match(css, /--color-delivery:#4C92AD/);
 assert.match(css, /--radius-card:16px/);
 assert.match(css, /--radius-control:12px/);
 assert.match(css, /--tap-size:44px/);
@@ -126,6 +139,9 @@ assert.match(css, /\.product-card[^}]*border-radius:var\(--radius-card\)/);
 assert.match(css, /\.search-form[^}]*border-radius:var\(--radius-pill\)/);
 assert.match(css, /\.product-image-wrap\{[^}]*aspect-ratio:6\/7/);
 assert.match(css, /\.product-image-wrap img\{[^}]*object-fit:contain/);
+assert.match(css, /\.product-detail-image\{[^}]*aspect-ratio:6\/7/);
+assert.match(css, /\.product-detail-image img\{[^}]*object-fit:contain/);
+assert.match(css, /\.delivery-link\{[^}]*background:var\(--color-delivery-soft\)/);
 assert.match(css, /\.product-copy\{[^}]*min-height:0/);
 assert.match(css, /\.product-purchase-row\{[^}]*margin-top:8px/);
 assert.doesNotMatch(css, /\.product-copy\{[^}]*min-height:190px/);
