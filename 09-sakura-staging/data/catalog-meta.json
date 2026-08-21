@@ -80,12 +80,13 @@
     "products[725].SHOSAISETSUMEI",
     "products[838].SHOSAISETSUMEI"
   ],
-  "generated_at": "2026-08-21T16:03:30Z",
+  "generated_at": "2026-08-21T16:10:36Z",
   "hidden_null_price_count": 5,
   "listed_orphan_product_count": 9,
   "orphan_product_count": 159,
   "product_count": 916,
   "schema_version": 2,
+  "snapshot_id": "sha256:e01f82b94b8227246ceef9995b8aa12265eba58aeabc034271daf46ebfc11348",
   "synthesized_category_codes": [
     12,
     90,

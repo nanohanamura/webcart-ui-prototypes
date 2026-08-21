@@ -18883,5 +18883,6 @@
       "thumbnail_url": "https://nano87.sakura.ne.jp/webcart/img/thum/5783_small.jpg"
     }
   ],
-  "schema_version": 2
+  "schema_version": 2,
+  "snapshot_id": "sha256:e01f82b94b8227246ceef9995b8aa12265eba58aeabc034271daf46ebfc11348"
 }
