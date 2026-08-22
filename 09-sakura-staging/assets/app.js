@@ -3,6 +3,7 @@
 
   const DEFAULT_CATEGORY = "all";
   const PLACEHOLDER_IMAGE_URL = "https://nano87.sakura.ne.jp/webcart/img/dumy.jpg";
+  const PRODUCT_PAGE_SIZE = 12;
   const MAX_CART_QUANTITY = 99;
   const CART_STORAGE_VERSION = "v1";
   const numberFormat = new Intl.NumberFormat("ja-JP");
@@ -161,6 +162,7 @@
     params.delete("open");
     params.delete("product");
     params.delete("word");
+    params.delete("pg");
     params.set("gc_cd", text(code));
     return params;
   }
@@ -169,11 +171,62 @@
     const params = new URLSearchParams(currentParams);
     params.delete("open");
     params.delete("product");
+    params.delete("pg");
     params.set("gc_cd", "all");
     const trimmedWord = text(word).trim();
     if (trimmedWord) params.set("word", trimmedWord);
     else params.delete("word");
     return params;
+  }
+
+  function paginateProducts(products, requestedPage, pageSize = PRODUCT_PAGE_SIZE) {
+    const safePageSize = Number.isSafeInteger(pageSize) && pageSize > 0 ? pageSize : PRODUCT_PAGE_SIZE;
+    const pageCount = Math.max(1, Math.ceil(products.length / safePageSize));
+    const parsedPage = Number.parseInt(text(requestedPage), 10);
+    const currentPage = Math.min(Number.isSafeInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1, pageCount);
+    const start = (currentPage - 1) * safePageSize;
+    return { items: products.slice(start, start + safePageSize), currentPage, pageCount };
+  }
+
+  function catalogPageParams(currentParams, page) {
+    const params = new URLSearchParams(currentParams);
+    params.delete("open");
+    params.delete("product");
+    if (page > 1) params.set("pg", text(page));
+    else params.delete("pg");
+    return params;
+  }
+
+  function paginationPages(currentPage, pageCount) {
+    const values = new Set([1, pageCount, currentPage - 1, currentPage, currentPage + 1]);
+    const pages = Array.from(values).filter((page) => page >= 1 && page <= pageCount).sort((a, b) => a - b);
+    const output = [];
+    pages.forEach((page, index) => {
+      if (index > 0 && page - pages[index - 1] > 1) output.push(null);
+      output.push(page);
+    });
+    return output;
+  }
+
+  function paginationMarkup(params, currentPage, pageCount) {
+    if (pageCount <= 1) return "";
+    const href = (page) => {
+      const query = catalogPageParams(params, page).toString();
+      return `index.html${query ? `?${query}` : ""}`;
+    };
+    const pages = paginationPages(currentPage, pageCount).map((page, index) => page === null
+      ? `<span class="pagination-ellipsis" aria-hidden="true" data-gap="${index}">…</span>`
+      : (page === currentPage
+        ? `<span class="pagination-page is-current" aria-current="page">${page}</span>`
+        : `<a class="pagination-page" href="${escapeHtml(href(page))}" aria-label="${page}ページへ">${page}</a>`)).join("");
+    return `<nav class="pagination" aria-label="商品一覧のページ切り替え">
+      <p class="pagination-status">${pageCount}ページ中 ${currentPage}ページ</p>
+      <div class="pagination-controls">
+        ${currentPage > 1 ? `<a class="pagination-move" href="${escapeHtml(href(currentPage - 1))}" rel="prev">前へ</a>` : '<span class="pagination-move is-disabled" aria-disabled="true">前へ</span>'}
+        <div class="pagination-pages">${pages}</div>
+        ${currentPage < pageCount ? `<a class="pagination-move" href="${escapeHtml(href(currentPage + 1))}" rel="next">次へ</a>` : '<span class="pagination-move is-disabled" aria-disabled="true">次へ</span>'}
+      </div>
+    </nav>`;
   }
 
   function snapshotMetadataMatches(catalog, meta) {
@@ -228,6 +281,20 @@
     const alt = registeredImageUrl ? text(product.SHOHINNM) : "商品画像を準備中";
     const className = registeredImageUrl ? "" : ' class="is-placeholder"';
     return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}"${className}${detail ? "" : ' loading="lazy"'} decoding="async" width="600" height="700">`;
+  }
+
+  function handleImageError(image) {
+    if (image.dataset.placeholderApplied !== "true") {
+      image.dataset.placeholderApplied = "true";
+      image.src = PLACEHOLDER_IMAGE_URL;
+      image.alt = "商品画像を準備中";
+      image.classList.add("is-placeholder");
+      return;
+    }
+    const replacement = image.ownerDocument.createElement("span");
+    replacement.className = "image-placeholder";
+    replacement.textContent = "画像を準備中";
+    image.replaceWith(replacement);
   }
 
   function cartControls(product, quantity) {
@@ -324,6 +391,7 @@
     const activeCategory = params.get("gc_cd") || DEFAULT_CATEGORY;
     const word = params.get("word") || "";
     const results = filterProducts(listed, activeCategory, word);
+    const page = paginateProducts(results, params.get("pg"));
     const selectedName = activeCategory === "all" ? "すべての商品" : categoryName(categories, activeCategory);
     const summary = cartSummary(cart, catalog);
     return `${header(summary.itemCount)}${cartLiveRegion()}<main id="main" class="page-shell" tabindex="-1">
@@ -335,9 +403,10 @@
       <a class="delivery-guide" href="index.html?flow=consult"><span>初めて配達をご希望の方</span><strong>配達相談について ›</strong></a>
       <section class="category-summary" aria-labelledby="products-title">
         <div><h1 id="products-title">${escapeHtml(word ? `「${word}」の検索結果` : selectedName)}</h1><p>${results.length}商品</p></div>
-        <button type="button" data-open-categories>カテゴリー変更</button>
+        <a class="category-change" href="index.html?open=categories">カテゴリー変更</a>
       </section>
-      <div class="product-grid">${results.length ? results.map((product) => productCard(product, cart)).join("") : '<p class="empty-state">該当する商品がありません。検索条件やカテゴリーを変えてお試しください。</p>'}</div>
+      <div class="product-grid">${results.length ? page.items.map((product) => productCard(product, cart)).join("") : '<p class="empty-state">該当する商品がありません。検索条件やカテゴリーを変えてお試しください。</p>'}</div>
+      ${results.length ? paginationMarkup(params, page.currentPage, page.pageCount) : ""}
       <section class="delivery-note" id="delivery-guide"><h2>初めて配達をご希望の方</h2><p>配達のご利用は、菜の花村への電話相談から承ります。</p></section>
     </main>${categoryPanel(categories, activeCategory, listed.length)}${bottomNav(summary.itemCount)}`;
   }
@@ -536,7 +605,7 @@
     const candidate = origin || pageDocument?.activeElement;
     const isBody = candidate === pageDocument?.body || candidate?.tagName === "BODY";
     if (candidate && !isBody && typeof candidate.focus === "function") return candidate;
-    return pageDocument?.querySelector("[data-open-categories]") || null;
+    return pageDocument?.querySelector(".category-change") || null;
   }
 
   function bindCatalogEvents() {
@@ -557,7 +626,7 @@
       scrim.classList.add("is-open");
       setBackgroundInert(true);
       document.body.classList.add("drawer-open");
-      categorySearch.focus();
+      panel.querySelector("[data-close-categories]")?.focus();
     };
     const close = () => {
       if (!panel || !scrim) return;
@@ -588,7 +657,6 @@
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
     };
     panel?.addEventListener("keydown", trapDrawerFocus);
-    document.querySelectorAll("[data-open-categories]").forEach((button) => button.addEventListener("click", (event) => open(event.currentTarget)));
     document.querySelectorAll("[data-close-categories]").forEach((button) => button.addEventListener("click", close));
     document.querySelector("[data-category-search]")?.addEventListener("input", (event) => {
       const needle = normalize(event.currentTarget.value);
@@ -614,12 +682,7 @@
   }
 
   function bindImageErrors(root = document) {
-    root.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => {
-      const replacement = document.createElement("span");
-      replacement.className = "image-placeholder";
-      replacement.textContent = "画像を準備中";
-      image.replaceWith(replacement);
-    }, { once: true }));
+    root.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => handleImageError(image)));
   }
 
   function announceCartChange(message) {
@@ -718,7 +781,7 @@
     });
   }
 
-  const api = { MAX_CART_QUANTITY, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, categoryDrawerOrigin, escapeHtml };
+  const api = { MAX_CART_QUANTITY, PRODUCT_PAGE_SIZE, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, paginateProducts, catalogPageParams, paginationMarkup, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, handleImageError, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, categoryDrawerOrigin, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
 
   if (typeof document !== "undefined") {

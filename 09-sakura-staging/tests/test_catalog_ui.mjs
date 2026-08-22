@@ -30,11 +30,13 @@ test("page skeleton and local snapshot loader exist", () => {
 
 test("category and search navigation remove the one-shot drawer parameter", () => {
   const { api, source } = loadHelpers();
-  const original = new URLSearchParams("open=categories&gc_cd=44&word=豆");
+  const original = new URLSearchParams("open=categories&gc_cd=44&word=豆&pg=3");
   assert.equal(api.categoryNavigationParams(original, "25").get("open"), null);
   assert.equal(api.categoryNavigationParams(original, "25").get("gc_cd"), "25");
+  assert.equal(api.categoryNavigationParams(original, "25").get("pg"), null);
   assert.equal(api.searchNavigationParams(original, "味噌").get("open"), null);
   assert.equal(api.searchNavigationParams(original, "味噌").get("word"), "味噌");
+  assert.equal(api.searchNavigationParams(original, "味噌").get("pg"), null);
   assert.match(source, /params\.delete\("open"\)/);
 });
 
@@ -119,16 +121,73 @@ test("list cards use the current full image without eager loading every product"
   assert.match(card, /decoding="async"/);
 });
 
-test("responsive CSS keeps two mobile columns, four desktop columns and portrait contained images", () => {
+test("responsive CSS keeps two mobile columns, four compact desktop columns, six wide desktop columns and portrait contained images", () => {
   const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
   assert.match(css, /\.product-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\)/s);
   assert.match(css, /@media\s*\(min-width:\s*800px\)[\s\S]*\.product-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,minmax\(0,1fr\)\)/s);
+  assert.match(css, /@media\s*\(min-width:\s*1100px\)[\s\S]*\.product-grid\s*\{[^}]*grid-template-columns:\s*repeat\(6,minmax\(0,1fr\)\)/s);
   assert.match(css, /\.product-image\s*\{[^}]*aspect-ratio:\s*6\/7/s);
   assert.match(css, /\.product-image img\s*\{[^}]*object-fit:\s*contain/s);
   assert.match(css, /\.add-button\s*\{[^}]*min-height:\s*44px/s);
   assert.match(css, /\.product-actions\s*\{[^}]*justify-content:\s*flex-end/s);
   assert.match(css, /\.site-header\s*\{[^}]*position:\s*sticky[^}]*top:\s*0/s);
   assert.match(css, /\[hidden\]\s*\{[^}]*display:\s*none\s*!important/s);
+});
+
+test("catalog renders twelve products per page with safe page navigation", () => {
+  const { api } = loadHelpers();
+  const firstPage = api.renderCatalog(catalog, new URLSearchParams(), {});
+  const secondPage = api.renderCatalog(catalog, new URLSearchParams("pg=2"), {});
+  const lastPage = api.renderCatalog(catalog, new URLSearchParams("pg=999"), {});
+  assert.equal((firstPage.match(/<article class="product-card">/g) || []).length, 12);
+  assert.equal((secondPage.match(/<article class="product-card">/g) || []).length, 12);
+  assert.equal((lastPage.match(/<article class="product-card">/g) || []).length, 9);
+  assert.match(firstPage, /aria-label="商品一覧のページ切り替え"/);
+  assert.match(firstPage, /aria-current="page"[^>]*>1</);
+  assert.match(secondPage, /aria-current="page"[^>]*>2</);
+  assert.match(lastPage, /52ページ中 52ページ/);
+  assert.notEqual(firstPage.match(/data-cart-hook="[^"]+"/)[0], secondPage.match(/data-cart-hook="[^"]+"/)[0]);
+});
+
+test("mobile pagination wraps controls into two rows instead of overflowing", () => {
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /\.pagination-controls\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2,minmax\(0,1fr\)\)/s);
+  assert.match(css, /\.pagination-pages\s*\{[^}]*grid-column:\s*1\/-1/s);
+  assert.match(css, /@media\s*\(min-width:\s*800px\)[\s\S]*\.pagination-controls\s*\{[^}]*display:\s*flex/s);
+});
+
+test("both category entry points use the same URL-opened drawer route", () => {
+  const { api } = loadHelpers();
+  const html = api.renderCatalog(catalog, new URLSearchParams(), {});
+  const nav = api.bottomNav(0);
+  assert.match(html, /class="category-change" href="index\.html\?open=categories"/);
+  assert.match(nav, /href="index\.html\?open=categories"/);
+  assert.doesNotMatch(html, /<button[^>]*data-open-categories/);
+});
+
+test("category drawer fits the iPhone viewport and keeps its final row scrollable", () => {
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /\.category-panel\s*\{[^}]*width:\s*100%[^}]*max-width:\s*100vw[^}]*height:\s*100dvh/s);
+  assert.match(css, /\.category-search input\s*\{[^}]*font-size:\s*16px/s);
+  assert.match(css, /\.category-list\s*\{[^}]*flex:\s*1[^}]*min-height:\s*0[^}]*overflow:\s*auto/s);
+});
+
+test("a missing registered image falls back to the current preparation image before text", () => {
+  const { api } = loadHelpers();
+  const classes = [];
+  const image = { dataset: {}, classList: { add(value) { classes.push(value); } }, alt: "新潟ぶなしめじ", src: "https://example.invalid/missing.jpg" };
+  api.handleImageError(image);
+  assert.equal(image.src, "https://nano87.sakura.ne.jp/webcart/img/dumy.jpg");
+  assert.equal(image.alt, "商品画像を準備中");
+  assert.equal(image.dataset.placeholderApplied, "true");
+  assert.deepEqual(classes, ["is-placeholder"]);
+
+  let replacement = null;
+  image.ownerDocument = { createElement() { return { className: "", textContent: "" }; } };
+  image.replaceWith = (node) => { replacement = node; };
+  api.handleImageError(image);
+  assert.equal(replacement.className, "image-placeholder");
+  assert.equal(replacement.textContent, "画像を準備中");
 });
 
 test("product cards, product images and category controls use one rounded visual system", () => {
@@ -174,7 +233,7 @@ test("URL-opened category drawer chooses a focusable page control as its close r
   const fakeDocument = {
     activeElement: { tagName: "BODY" },
     querySelector(selector) {
-      assert.equal(selector, "[data-open-categories]");
+      assert.equal(selector, ".category-change");
       return fallback;
     }
   };
@@ -189,7 +248,7 @@ test("category drawer is modal, keyboard-contained, and restores page access on 
   assert.match(source, /\.skip-link, \.site-header, #main, \.bottom-nav/);
   assert.match(source, /backgroundNodes\.forEach/);
   assert.match(source, /node\.toggleAttribute\("inert", isOpen\)/);
-  assert.match(source, /categorySearch\.focus\(\)/);
+  assert.match(source, /panel\.querySelector\("\[data-close-categories\]"\)\?\.focus\(\)/);
   assert.match(source, /drawerOrigin\?\.focus\(\)/);
   assert.match(source, /filter\(isActuallyFocusable\)/);
   assert.match(source, /getClientRects\(\)\.length > 0/);
