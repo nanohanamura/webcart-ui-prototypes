@@ -526,19 +526,19 @@
       "GAZOFILENM": null,
       "HYOJIKIGEN": null,
       "OTODOKEYOTEIBI": "",
-      "SHOHINBUNRUICD": 91,
-      "SHOHINBUNRUISUBTITLE": "☆雑貨",
-      "SHOHINBUNRUITITLE": "☆雑貨"
+      "SHOHINBUNRUICD": 90,
+      "SHOHINBUNRUISUBTITLE": "ペットフード",
+      "SHOHINBUNRUITITLE": "ペットフード"
     },
     {
-      "CHUMONSHIMEKIRIBI": null,
+      "CHUMONSHIMEKIRIBI": "",
       "COMMENT": "",
       "GAZOFILENM": null,
       "HYOJIKIGEN": null,
-      "OTODOKEYOTEIBI": null,
-      "SHOHINBUNRUICD": 90,
-      "SHOHINBUNRUISUBTITLE": "分類コード 90",
-      "SHOHINBUNRUITITLE": "分類名未登録"
+      "OTODOKEYOTEIBI": "",
+      "SHOHINBUNRUICD": 91,
+      "SHOHINBUNRUISUBTITLE": "☆雑貨",
+      "SHOHINBUNRUITITLE": "☆雑貨"
     },
     {
       "CHUMONSHIMEKIRIBI": null,
@@ -12974,5 +12974,5 @@
     }
   ],
   "schema_version": 2,
-  "snapshot_id": "sha256:01946375293b85542b01a6dda6bd9c1986c9ad346fb06eaf6c5b5aa0ca22840a"
+  "snapshot_id": "sha256:8f2f3052f6814ebda1b7c947ff52a7268c44b969785f6de979202c29ca8d620b"
 }

@@ -51,6 +51,14 @@ test("only DELFLG zero products are listed and all categories stay available", (
   assert.equal(api.categoriesWithCounts(catalog.categories, listed).length, 55);
 });
 
+test("category 90 is the registered pet food category with its four listed products", () => {
+  const category = catalog.categories.find((item) => item.SHOHINBUNRUICD === 90);
+  const products = catalog.products.filter((item) => item.SHOHINBUNRUICD === 90);
+  assert.equal(category?.SHOHINBUNRUITITLE, "ペットフード");
+  assert.equal(category?.SHOHINBUNRUISUBTITLE, "ペットフード");
+  assert.deepEqual(products.map((item) => item.SHOHINCD), [6520, 6521, 6522, 6523]);
+});
+
 test("catalog top defaults to every listed product", () => {
   const { api } = loadHelpers();
   const html = api.renderCatalog(catalog, new URLSearchParams(), {});

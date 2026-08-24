@@ -15,20 +15,19 @@
     "products[440].SHOSAISETSUMEI",
     "products[562].SHOSAISETSUMEI"
   ],
-  "generated_at": "2026-08-21T17:07:18Z",
+  "generated_at": "2026-08-24T06:33:42Z",
   "hidden_null_price_count": 5,
   "hidden_product_count": 295,
-  "listed_orphan_product_count": 9,
+  "listed_orphan_product_count": 5,
   "listed_product_count": 621,
-  "orphan_product_count": 159,
+  "orphan_product_count": 154,
   "product_count": 621,
   "schema_version": 2,
-  "snapshot_id": "sha256:01946375293b85542b01a6dda6bd9c1986c9ad346fb06eaf6c5b5aa0ca22840a",
+  "snapshot_id": "sha256:8f2f3052f6814ebda1b7c947ff52a7268c44b969785f6de979202c29ca8d620b",
   "source_product_count": 916,
   "synthesized_category_codes": [
-    90,
     99
   ],
-  "synthesized_category_count": 2,
+  "synthesized_category_count": 1,
   "visibility_contract": "Public catalog contains only products where DELFLG == 0"
 }
