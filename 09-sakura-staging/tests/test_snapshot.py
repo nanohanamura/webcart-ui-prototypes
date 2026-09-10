@@ -70,6 +70,30 @@ class SnapshotContractTests(unittest.TestCase):
         self.assertEqual(295, meta["hidden_product_count"])
         self.assertEqual(2, meta["decode_warning_count"])
         self.assertEqual(catalog["snapshot_id"], meta["snapshot_id"])
+        public_text = json.dumps(catalog, ensure_ascii=False)
+        for forbidden in ("放射性セシウム", "セシウム", "放射能", "cesium"):
+            self.assertNotIn(forbidden, public_text)
+        self.assertEqual(346, meta["radiation_text_removed_field_count"])
+
+    def test_public_snapshot_removes_radiation_text_without_changing_the_csv_contract(self):
+        data = payload()
+        data["products"][0]["KIKAKUSETSUMEI"] = (
+            "200g、  ●放射性セシウム不検出（検出限界１０ベクレル）、要冷蔵"
+        )
+        data["products"][0]["SHOSAISETSUMEI"] = (
+            "北海道産なので放射能の心配もなく安心の品です。セシウムについての旧案内。気候が安定しています。"
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            build_snapshot.build_snapshot(data, Path(tmp))
+            catalog = json.loads((Path(tmp) / "catalog.json").read_text(encoding="utf-8"))
+            meta = json.loads((Path(tmp) / "catalog-meta.json").read_text(encoding="utf-8"))
+
+        product_row = catalog["products"][0]
+        self.assertEqual(set(PRODUCT_COLUMNS) | {"image_url", "thumbnail_url"}, set(product_row))
+        self.assertEqual("200g、要冷蔵", product_row["KIKAKUSETSUMEI"])
+        self.assertEqual("気候が安定しています。", product_row["SHOSAISETSUMEI"])
+        self.assertEqual(2, meta["radiation_text_removed_field_count"])
 
     def test_valid_snapshot_publishes_only_listed_products_and_keeps_safe_aggregate_counts(self):
         with tempfile.TemporaryDirectory() as tmp:

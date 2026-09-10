@@ -50,8 +50,8 @@ fill_stage() {
   stage=$1
   token=$2
   stage_fs=$(mapped "$stage")
-  mkdir -p "$stage_fs/assets" "$stage_fs/data"
-  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json .htaccess; do
+  mkdir -p "$stage_fs/assets" "$stage_fs/data" "$stage_fs/category-comparison"
+  for rel in index.html manager-review.html assets/app.js assets/search.js assets/styles.css data/catalog.json data/catalog-meta.json data/search-index.json data/product-images.php category-comparison/e-horizontal-product-list.html category-comparison/comparison.css category-comparison/comparison.js .htaccess; do
     cp "$ROOT/$rel" "$stage_fs/$rel"
   done
   printf 'nanohana-webcart-prototype-v1\ntarget=%s\ndeployment=%s\n' "$TARGET" "$token" >"$stage_fs/$MARKER"
@@ -62,7 +62,7 @@ write_manifest() {
   stage=$1
   stage_fs=$(mapped "$stage")
   : >"$stage_fs/$MANIFEST"
-  for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json .htaccess; do
+  for rel in index.html manager-review.html assets/app.js assets/search.js assets/styles.css data/catalog.json data/catalog-meta.json data/search-index.json data/product-images.php category-comparison/e-horizontal-product-list.html category-comparison/comparison.css category-comparison/comparison.js .htaccess; do
     printf '%s\t%s\t%s\n' "$rel" "$(size_file "$stage_fs/$rel")" "$(sha256_file "$stage_fs/$rel")" >>"$stage_fs/$MANIFEST"
   done
 }
@@ -74,6 +74,7 @@ deploy_initial() {
   run_ops prepare "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token"
   fill_stage "$stage" "$token"
   finalize_stage "$stage" "$backup" "$token"
+  commit_stage "$stage" "$backup" "$token"
 }
 
 finalize_stage() {
@@ -86,6 +87,13 @@ finalize_stage() {
     "$(size_file "$stage_fs/$MANIFEST")" "$(sha256_file "$stage_fs/$MANIFEST")"
 }
 
+commit_stage() {
+  stage=$1
+  backup=$2
+  token=$3
+  run_ops commit "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$token"
+}
+
 reset_remote initial
 stage="$TARGET.stage-$TOKEN"
 backup="$BACKUP_ROOT/webcart-prototype-$TOKEN"
@@ -94,18 +102,40 @@ deploy_initial "$stage" "$backup" "$TOKEN"
 [ -f "$(mapped "$TARGET/$MANIFEST")" ] || fail "initial deployment manifest is missing"
 [ ! -e "$(mapped "$LOCK")" ] || fail "initial deployment left the lock"
 [ "$(run_ops status "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$TOKEN")" = COMMITTED ] || fail "committed status was not detected"
+if run_ops base-manifest "$TARGET" "$stage" "$BACKUP_ROOT" "$backup" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
+  fail "base manifest was exposed without owning the deployment lock"
+fi
 
-reset_remote legacy_update
-deploy_initial "$TARGET.stage-legacy-old" "$BACKUP_ROOT/webcart-prototype-legacy-old" legacy-old
-rm "$(mapped "$TARGET/.htaccess")"
-sed '$d' "$(mapped "$TARGET/$MANIFEST")" >"$temp/legacy-manifest"
-mv "$temp/legacy-manifest" "$(mapped "$TARGET/$MANIFEST")"
-legacy_stage="$TARGET.stage-legacy-new"
-legacy_backup="$BACKUP_ROOT/webcart-prototype-legacy-new"
-run_ops prepare "$TARGET" "$legacy_stage" "$BACKUP_ROOT" "$legacy_backup" "$LOCK" legacy-new
-fill_stage "$legacy_stage" legacy-new
-finalize_stage "$legacy_stage" "$legacy_backup" legacy-new
-[ -f "$(mapped "$TARGET/.htaccess")" ] || fail "legacy managed target did not upgrade to protected layout"
+reset_remote rejected_upgrade
+old_stage="$TARGET.stage-rejected-old"
+old_backup="$BACKUP_ROOT/webcart-prototype-rejected-old"
+run_ops prepare "$TARGET" "$old_stage" "$BACKUP_ROOT" "$old_backup" "$LOCK" rejected-old
+old_stage_fs=$(mapped "$old_stage")
+mkdir -p "$old_stage_fs/assets" "$old_stage_fs/data" "$old_stage_fs/category-comparison"
+for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json data/product-images.php category-comparison/b-persistent-groups.html category-comparison/d-header-menu-all-products.html category-comparison/comparison.css category-comparison/comparison.js .htaccess; do
+  cp "$ROOT/$rel" "$old_stage_fs/$rel"
+done
+printf 'nanohana-webcart-prototype-v1\ntarget=%s\ndeployment=%s\n' "$TARGET" rejected-old >"$old_stage_fs/$MARKER"
+: >"$old_stage_fs/$MANIFEST"
+for rel in index.html manager-review.html assets/app.js assets/styles.css data/catalog.json data/catalog-meta.json data/product-images.php category-comparison/b-persistent-groups.html category-comparison/d-header-menu-all-products.html category-comparison/comparison.css category-comparison/comparison.js .htaccess; do
+  printf '%s\t%s\t%s\n' "$rel" "$(size_file "$old_stage_fs/$rel")" "$(sha256_file "$old_stage_fs/$rel")" >>"$old_stage_fs/$MANIFEST"
+done
+finalize_stage "$old_stage" "$old_backup" rejected-old
+commit_stage "$old_stage" "$old_backup" rejected-old
+new_stage="$TARGET.stage-adopted-e"
+new_backup="$BACKUP_ROOT/webcart-prototype-adopted-e"
+run_ops prepare "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" adopted-e
+base_output=$(run_ops base-manifest "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" adopted-e)
+[ "$(printf '%s\n' "$base_output" | wc -l | tr -d ' ')" = 7 ] || fail "rejected B/D target must expose exactly seven preserved files"
+fill_stage "$new_stage" adopted-e
+finalize_stage "$new_stage" "$new_backup" adopted-e
+[ -e "$(mapped "$LOCK")" ] || fail "deployment lock was released before publication verification"
+commit_stage "$new_stage" "$new_backup" adopted-e
+[ -f "$(mapped "$TARGET/category-comparison/e-horizontal-product-list.html")" ] || fail "adopted E page is missing"
+[ ! -e "$(mapped "$TARGET/category-comparison/b-persistent-groups.html")" ] || fail "rejected B page remained public"
+[ ! -e "$(mapped "$TARGET/category-comparison/d-header-menu-all-products.html")" ] || fail "rejected D page remained public"
+[ -f "$(mapped "$new_backup/category-comparison/b-persistent-groups.html")" ] || fail "backup did not retain rejected B page"
+[ -f "$(mapped "$new_backup/category-comparison/d-header-menu-all-products.html")" ] || fail "backup did not retain rejected D page"
 
 if run_ops status "$TARGET" "$TARGET.stage-wrong" "$BACKUP_ROOT" "$BACKUP_ROOT/webcart-prototype-$TOKEN" "$LOCK" "$TOKEN" >/dev/null 2>&1; then
   fail "stage not derived from token was accepted"
@@ -124,6 +154,7 @@ fi
 
 reset_remote update
 deploy_initial "$TARGET.stage-old-token" "$BACKUP_ROOT/webcart-prototype-old-token" old-token
+old_hash=$(sha256_file "$(mapped "$TARGET/index.html")")
 new_stage="$TARGET.stage-new-token"
 new_backup="$BACKUP_ROOT/webcart-prototype-new-token"
 run_ops prepare "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" new-token
@@ -131,8 +162,14 @@ run_ops prepare "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" new-
 printf '\n<!-- updated -->\n' >>"$(mapped "$new_stage/index.html")"
 write_manifest "$new_stage"
 finalize_stage "$new_stage" "$new_backup" new-token
+[ -e "$(mapped "$LOCK")" ] || fail "update lock was released before publication verification"
 [ -d "$(mapped "$new_backup")" ] || fail "managed update did not retain backup"
 grep -F '<!-- updated -->' "$(mapped "$TARGET/index.html")" >/dev/null || fail "managed update did not switch target"
+run_ops rollback "$TARGET" "$new_stage" "$BACKUP_ROOT" "$new_backup" "$LOCK" new-token >/dev/null
+[ "$(sha256_file "$(mapped "$TARGET/index.html")")" = "$old_hash" ] || fail "post-commit rollback did not restore the previous target"
+[ ! -e "$(mapped "$new_backup")" ] || fail "post-commit rollback left the consumed backup"
+[ ! -e "$(mapped "$new_stage")" ] || fail "post-commit rollback left the failed deployment quarantine"
+[ ! -e "$(mapped "$LOCK")" ] || fail "post-commit rollback left the lock"
 
 reset_remote partial
 partial_stage="$TARGET.stage-partial-token"

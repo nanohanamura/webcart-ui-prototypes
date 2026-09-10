@@ -78,6 +78,9 @@ test("product controls switch between add and quantity stepper", () => {
   const active = api.cartControls(product, 2);
   assert.match(active, /data-cart-action="decrease"/);
   assert.match(active, /data-cart-action="increase"/);
+  assert.match(active, /class="quantity-label">数量<\/span><span class="quantity-stepper">/);
+  assert.ok(active.indexOf('class="quantity-label"') < active.indexOf('data-cart-action="decrease"'));
+  assert.match(active, /<output aria-label="数量 2">2<\/output>/);
   assert.match(active, /aria-label="数量 2"/);
   assert.doesNotMatch(active, />カートに追加</);
 });
@@ -94,7 +97,9 @@ test("cart page includes product, unit price, quantity, delete, subtotal, counts
   const { api } = loadHelpers();
   const [product] = listedSample(1);
   const html = api.renderCart(catalog, { [product.SHOHINCD]: 2 });
+  const temperature = { 0: "常温", 1: "冷蔵", 2: "冷凍" }[product.ONDOTAI] || "温度帯未設定";
   assert.match(html, new RegExp(product.SHOHINNM.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(html, new RegExp(temperature));
   assert.match(html, /単価/);
   assert.match(html, /data-cart-action="remove"/);
   assert.match(html, /小計/);
@@ -158,13 +163,15 @@ test("localStorage getter failure uses one persistent in-memory storage for load
 
 test("cart remains prototype-only and connects to no order, login, payment, mail, CSV, NILE or remote endpoint", () => {
   const { source } = loadHelpers();
-  assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:/i);
+  assert.equal((source.match(/\.\/data\/product-images\.php\?product=/g) || []).length, 1);
+  assert.doesNotMatch(source.replace("./data/product-images.php?product=", ""), /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:/i);
   const externalUrls = [...new Set(source.match(/https?:\/\/[^"'`\s]+/g) || [])].sort();
   assert.deepEqual(externalUrls, [
     "https://nano87.sakura.ne.jp/webcart/img/dumy.jpg",
-    "https://www.nano87.com/"
+    "https://www.nano87.com/",
+    "https://www.nano87.com/delivery/"
   ]);
-  assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/catalog(?:-meta)?\.json)/);
+  assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/(?:catalog(?:-meta)?|search-index)\.json|`\.\/data\/product-images\.php\?product=)/);
   assert.doesNotMatch(source, /<form[^>]+action=/i);
 });
 

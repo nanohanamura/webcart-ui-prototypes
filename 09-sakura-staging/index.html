@@ -5,11 +5,18 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="robots" content="noindex,nofollow">
   <title>商品一覧｜菜の花村 お買い物ページ試作</title>
-  <link rel="stylesheet" href="assets/styles.css">
+  <link rel="stylesheet" href="assets/styles.css?v=20260824-purchase1">
+  <link rel="stylesheet" href="assets/customer-ui.css?v=20260911-ui1">
 </head>
 <body>
   <a class="skip-link" href="#main">メインコンテンツへ移動</a>
   <div id="app"><p class="loading" role="status">商品を読み込んでいます。</p></div>
-  <script src="assets/app.js"></script>
+  <script>
+    if (location.search === "") {
+      location.replace("category-comparison/e-horizontal-product-list.html");
+    }
+  </script>
+  <script src="assets/search.js?v=20260905-search1"></script>
+  <script src="assets/app.js?v=20260911-ui1"></script>
 </body>
 </html>

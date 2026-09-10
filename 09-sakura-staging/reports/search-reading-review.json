@@ -1,0 +1,97 @@
+{
+  "items": [
+    {
+      "product_codes": [
+        2783
+      ],
+      "reason": "unknown_or_unconverted",
+      "term": "七"
+    },
+    {
+      "product_codes": [
+        1716,
+        1717,
+        2623,
+        2624
+      ],
+      "reason": "unknown_or_unconverted",
+      "term": "三"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "分"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "切"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "味"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "大"
+    },
+    {
+      "product_codes": [
+        1565
+      ],
+      "reason": "unknown_or_unconverted",
+      "term": "搾"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "本"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "板"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "水"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "油"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "海"
+    },
+    {
+      "product_codes": [
+        1823
+      ],
+      "reason": "unknown_or_unconverted",
+      "term": "珈巣"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "米"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "素"
+    },
+    {
+      "product_codes": [],
+      "reason": "multiple_readings",
+      "term": "羽"
+    }
+  ],
+  "schema_version": 1,
+  "snapshot_id": "sha256:8f96fbb8c62a0704d12f671425ff583d35abe260853ab69cd637542bc9f11ac0"
+}

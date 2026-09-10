@@ -2,10 +2,15 @@
 
 店長確認用の静的プロトタイプです。商品データは静的スナップショットを使用し、画像は既存の公開画像を参照します。注文、ログイン、メール、決済、CSV、NILE、本番データベースへ接続しません。
 
+商品詳細では、複数画像の操作確認用として商品コード23だけに2枚の試作画像を追加しています。この2枚は本番の商品写真ではありません。商品一覧は従来どおり代表画像1枚だけを表示します。
+
 ## 確認ページ
 
 - `index.html`: 商品一覧と購入フロー
 - `manager-review.html`: 店長確認表
+- `category-comparison/b-persistent-groups.html`: 店長確認用のB案（大分類を常設、小分類順、1ページ12商品）
+- `category-comparison/d-header-menu-all-products.html`: D案（B案の分類を継承、カテゴリー内全商品表示、PCヘッダーナビ、スマホ三本線メニュー）
+- `category-comparison/e-horizontal-product-list.html`: 採用済みE案（横型商品カードと現行カテゴリー操作）
 
 確認表のチェック状態と、購入フローへ入力した試作用情報は外部へ送信しません。購入フローの入力内容はページを再読み込みすると消えます。カートだけは、この試作専用のブラウザ保存領域を使用します。
 
@@ -14,12 +19,24 @@
 - 商品スナップショットの更新は、商品表と分類表の固定読み取りだけを使用します。
 - 顧客・会員・注文・支払いの実データを取得しません。
 - 本番Webカートのファイル、DB、CSV仕様、NILEは変更しません。
+- NILEから受け取る既存16列の互換性は維持し、公開用スナップショット生成時に放射性セシウム等の廃止対象文言を表示データから除外します。
 - 公開前に全テストと禁止接続検査を実行します。
+
+## 検索用データ
+
+`scripts/search_index.py` は商品スナップショットの生成時に、商品名・規格・カテゴリー名の読み仮名を検索専用データへ変換します。ひらがな・カタカナ、全角・半角、英字の大小、空白を吸収し、商品コードと部分一致検索にも対応します。表示名、NILE、商品CSV、本番DBは変更しません。
+
+- 公開対象: `data/search-index.json`
+- 補助辞書: `data/search-synonyms.json`
+- 内部確認用: `reports/search-reading-review.json`
+- 生成環境: `scripts/requirements-search.txt`
+
+読み仮名索引を取得できない、または商品スナップショットと版が一致しない場合は、商品名・規格・商品コードだけの安全な検索へ戻ります。商品一覧の初期表示は索引の読み込みを待ちません。
 
 ## さくらステージング配置
 
-`scripts/deploy_staging.sh --dry-run` は、公開対象6ファイル、商品件数、安全表示、禁止接続、テスト、SHA-256 manifestを確認するだけで、サーバーを変更しません。明示的な `--execute` のときだけ、固定先 `/home/nano87/www/staging/webcart-prototype/` へ配置します。
+`scripts/deploy_staging.sh --dry-run` は、公開アプリ12ファイル、商品件数、安全表示、禁止接続、テスト、SHA-256 manifestを確認するだけで、サーバーを変更しません。明示的な `--execute` のときだけ、固定先 `/home/nano87/www/staging/webcart-prototype/` へ配置します。
 
 初回は配置先が空いている場合だけ新規作成します。更新は、このスクリプトが残した管理markerとremote manifestの両方が一致する場合だけ許可します。更新前の版は `/home/nano87/codex-backups/webcart-prototype-UTC日時/` へ退避し、切り替えに失敗した場合は直前版を元の配置先へ戻します。並行配置は固定lockで拒否し、中断時は今回のstageだけを清掃します。
 
-公開先は `https://staging.nano87.com/webcart-prototype/` です。`tests/`、`scripts/`、README、`.env`、試作07・08は配置対象に含めません。配置構成は公開アプリ6ファイル、サーバー保護設定`.htaccess`、非公開管理2ファイルです。管理markerとremote manifestは更新時の所有確認と転送検証のため配置先内に保持しますが、`.htaccess`で3ファイルすべてのHTTPアクセスとディレクトリ一覧を拒否します。
+公開先は `https://staging.nano87.com/webcart-prototype/` です。`tests/`、`scripts/`、README、`.env`、試作07・08、A案、C案、複数画像管理画面は配置対象に含めません。配置構成は公開アプリ13ファイル、サーバー保護設定`.htaccess`、非公開管理2ファイルです。管理markerとremote manifestは更新時の所有確認と転送検証のため配置先内に保持しますが、`.htaccess`で3ファイルすべてのHTTPアクセスとディレクトリ一覧を拒否します。

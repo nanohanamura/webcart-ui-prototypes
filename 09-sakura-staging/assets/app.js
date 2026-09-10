@@ -27,6 +27,22 @@
     return text(value).normalize("NFKC").trim().toLocaleLowerCase("ja-JP");
   }
 
+  function stripPublicRadiationText(value) {
+    const original = text(value);
+    const cleaned = original
+      .replace(/[ \t　]*(?:、[ \t　]*)?[●・]?[ \t　]*放射性セシウム不検出[ \t　]*[（(][^）)\r\n]*ベクレル[^）)\r\n]*[）)]/gi, "")
+      .replace(/[ \t　]*(?:、[ \t　]*)?[●・]?[ \t　]*放射性セシウム検査対象地域外/gi, "")
+      .replace(/[^。\r\n]*放射能[^。\r\n]*。?/gi, "")
+      .replace(/[^。\r\n]*セシウム[^。\r\n]*。?/gi, "")
+      .replace(/[^。\r\n]*cesium[^。\r\n]*。?/gi, "");
+    if (cleaned === original) return original;
+    return cleaned
+      .replace(/、[ \t　]*、/g, "、")
+      .replace(/^[ \t　]*、[ \t　]*/, "")
+      .replace(/[ \t　]*、[ \t　]*$/, "")
+      .trim();
+  }
+
   function listedProducts(products) {
     return products.filter((product) => product.DELFLG === 0);
   }
@@ -118,13 +134,16 @@
   }
 
   function searchProducts(products, word) {
+    if (global.NANOHANA_SEARCH) {
+      return global.NANOHANA_SEARCH.searchProducts(products, word, activeSearchIndex, { snapshotId: activeSnapshotId });
+    }
     const needle = normalize(word);
     if (!needle) return products.slice();
     return products
       .map((product, index) => {
         const code = normalize(product.SHOHINCD);
         const name = normalize(product.SHOHINNM);
-        const spec = normalize(product.KIKAKUSETSUMEI);
+        const spec = normalize(stripPublicRadiationText(product.KIKAKUSETSUMEI));
         let rank = 99;
         if (code === needle) rank = 0;
         else if (code.startsWith(needle)) rank = 1;
@@ -258,7 +277,7 @@
   }
 
   function safeDescription(product, warningCodes) {
-    const description = text(product.SHOSAISETSUMEI).trim();
+    const description = stripPublicRadiationText(product.SHOSAISETSUMEI);
     if (description.includes("\uFFFD")) return { status: "warning", text: "商品説明は確認中です" };
     if (!warningCodes || typeof warningCodes.has !== "function") return { status: "warning", text: "商品説明は確認中です" };
     if (warningCodes.has(text(product.SHOHINCD))) return { status: "warning", text: "商品説明は確認中です" };
@@ -283,6 +302,49 @@
     return `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(alt)}"${className}${detail ? "" : ' loading="lazy"'} decoding="async" width="600" height="700">`;
   }
 
+  function productGalleryImages(product, galleryData) {
+    const representativeUrl = text(product.image_url || product.thumbnail_url) || PLACEHOLDER_IMAGE_URL;
+    const images = [{
+      image_url: representativeUrl,
+      alt_text: text(product.image_url || product.thumbnail_url) ? text(product.SHOHINNM) : "商品画像を準備中",
+      representative: true
+    }];
+    if (!galleryData || galleryData.schema_version !== 1 || !Array.isArray(galleryData.products)) return images;
+    const record = galleryData.products.find((item) => text(item && item.SHOHINCD) === text(product.SHOHINCD));
+    if (!record || !Array.isArray(record.images)) return images;
+    record.images
+      .filter((item) => item && item.published === true && (
+        /^assets\/[A-Za-z0-9._-]+\.svg$/i.test(text(item.image_url)) ||
+        /^https:\/\/nano87\.com\/webcart\/additional-images\/[0-9]{4}_[0-9a-f]{16}\.jpg$/.test(text(item.image_url))
+      ))
+      .sort((a, b) => Number(a.display_order) - Number(b.display_order))
+      .slice(0, 4)
+      .forEach((item) => images.push({
+        image_url: text(item.image_url),
+        alt_text: text(item.alt_text) || `${text(product.SHOHINNM)}の追加画像`,
+        representative: false
+      }));
+    return images;
+  }
+
+  function productGalleryMarkup(product, galleryData) {
+    const images = productGalleryImages(product, galleryData);
+    if (images.length === 1) return `<div class="single-image-gallery"><div class="product-detail-image">${imageMarkup(product, true)}</div><div class="gallery-dots is-single" aria-label="商品画像 1枚"><span class="gallery-dot-static is-current" aria-hidden="true"></span></div></div>`;
+    const slides = images.map((image, index) => `<figure class="gallery-slide" data-gallery-slide="${index}">
+      <img src="${escapeHtml(image.image_url)}" alt="${escapeHtml(image.alt_text)}" decoding="async" width="600" height="700">
+    </figure>`).join("");
+    const thumbnails = images.map((image, index) => `<button class="gallery-thumbnail${index === 0 ? " is-current" : ""}" type="button" data-gallery-index="${index}" aria-label="${index + 1}枚目の画像を表示" aria-pressed="${index === 0 ? "true" : "false"}">
+      <img src="${escapeHtml(image.image_url)}" alt="" loading="lazy" decoding="async" width="64" height="74">
+    </button>`).join("");
+    const dots = images.map((image, index) => `<button class="gallery-dot${index === 0 ? " is-current" : ""}" type="button" data-gallery-index="${index}" aria-label="${index + 1}枚目の画像を表示" aria-pressed="${index === 0 ? "true" : "false"}"></button>`).join("");
+    return `<section class="product-gallery" data-gallery aria-label="${escapeHtml(product.SHOHINNM)}の商品画像 ${images.length}枚">
+      <div class="gallery-track" data-gallery-track tabindex="0">${slides}</div>
+      <div class="gallery-dots" role="group" aria-label="表示する商品画像">${dots}</div>
+      <div class="gallery-status"><output data-gallery-position aria-live="polite">1 / ${images.length}</output><span>左右にスワイプして見られます</span></div>
+      <div class="gallery-thumbnails" role="group" aria-label="表示する商品画像">${thumbnails}</div>
+    </section>`;
+  }
+
   function handleImageError(image) {
     if (image.dataset.placeholderApplied !== "true") {
       image.dataset.placeholderApplied = "true";
@@ -305,11 +367,11 @@
     if (!Number.isSafeInteger(quantity) || quantity <= 0) {
       return `<div class="cart-controls" data-cart-controls="${code}"><button class="add-button" type="button" data-cart-action="add" data-cart-code="${code}" data-cart-focus="${code}:add">カートに追加</button></div>`;
     }
-    return `<div class="cart-controls quantity-stepper" data-cart-controls="${code}" role="group" aria-label="${escapeHtml(product.SHOHINNM)}の数量">
+    return `<div class="cart-controls quantity-controls" data-cart-controls="${code}" role="group" aria-label="${escapeHtml(product.SHOHINNM)}の数量"><span class="quantity-label">数量</span><span class="quantity-stepper">
       <button class="quantity-button" type="button" data-cart-action="decrease" data-cart-code="${code}" data-cart-focus="${code}:decrease" aria-label="${escapeHtml(product.SHOHINNM)}を1点減らす">−</button>
       <output aria-label="数量 ${quantity}">${quantity}</output>
       <button class="quantity-button" type="button" data-cart-action="increase" data-cart-code="${code}" data-cart-focus="${code}:increase" aria-label="${escapeHtml(product.SHOHINNM)}を1点増やす"${quantity >= MAX_CART_QUANTITY ? " disabled" : ""}>＋</button>
-    </div>`;
+    </span><span class="cart-added-notice" aria-hidden="true"></span></div>`;
   }
 
   function cartFocusKey(code, action, nextQuantity) {
@@ -328,9 +390,9 @@
         ${imageMarkup(product, false)}
       </a>
       <div class="product-copy">
-        <div class="product-meta"><span>${escapeHtml(temperatureLabel(product.ONDOTAI))}</span><small>商品コード ${code}</small></div>
+        <div class="product-meta"><span data-temperature="${escapeHtml(product.ONDOTAI)}">${escapeHtml(temperatureLabel(product.ONDOTAI))}</span><small>商品コード ${code}</small></div>
         <h2><a href="${detailUrl}">${escapeHtml(product.SHOHINNM || `商品コード ${code}`)}</a></h2>
-        <p class="spec">${escapeHtml(product.KIKAKUSETSUMEI) || "規格未設定"}</p>
+        <p class="spec">${escapeHtml(stripPublicRadiationText(product.KIKAKUSETSUMEI)) || "規格未設定"}</p>
         <div class="product-purchase">
           <p class="price">${priceLabel(product.BAIKA)}</p>
           <div class="product-actions" data-cart-hook="${code}">${cartControls(product, cart[text(product.SHOHINCD)] || 0)}</div>
@@ -343,12 +405,15 @@
     return '<div class="prototype-ribbon">店長確認用の試作です。実際の注文・ログイン・送信は行いません。</div>';
   }
 
-  function header(cartCount = 0) {
+  function cartLink(cartCount = 0, prefix = "") {
+    return `<a class="cart-preview" href="${prefix}index.html?cart=1"><svg class="cart-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2 3h3l2.2 12h12l2-8H6"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/></svg><span>カート</span><b data-cart-count>${cartCount}</b></a>`;
+  }
+  function header(cartCount = 0, prefix = "") {
     return `${prototypeRibbon()}<header class="site-header">
       <div class="header-main">
         <a class="home-link" href="https://www.nano87.com/" target="_blank" rel="noopener noreferrer">菜の花村<br>ホームへ</a>
-        <a class="brand" href="index.html"><strong>菜の花村</strong><small>お買い物ページ</small></a>
-        <a class="cart-preview" href="index.html?cart=1">カート <b data-cart-count>${cartCount}</b></a>
+        <a class="brand" href="${prefix}category-comparison/e-horizontal-product-list.html"><strong>菜の花村</strong><small>お買い物ページ</small></a>
+        ${cartLink(cartCount, prefix)}
       </div>
     </header>`;
   }
@@ -375,9 +440,9 @@
   function bottomNav(cartCount = 0) {
     return `<nav class="bottom-nav" aria-label="お買い物メニュー">
       <a href="index.html"><span aria-hidden="true">▦</span>商品</a>
-      <a href="index.html#word"><span aria-hidden="true">⌕</span>検索</a>
-      <a href="index.html?open=categories"><span aria-hidden="true">☰</span>カテゴリ</a>
-      <a href="index.html?cart=1"><span aria-hidden="true">♧</span>カート <b data-cart-count>${cartCount}</b></a>
+      <a href="category-comparison/e-horizontal-product-list.html#comparison-word"><span aria-hidden="true">⌕</span>検索</a>
+      <a href="category-comparison/e-horizontal-product-list.html#categories"><span aria-hidden="true">☰</span>カテゴリ</a>
+      ${cartLink(cartCount).replace('class="cart-preview"', 'class="bottom-cart"')}
     </nav>`;
   }
 
@@ -400,7 +465,7 @@
         <input id="word" name="word" type="search" value="${escapeHtml(word)}" placeholder="商品コード・商品名・規格" autocomplete="off">
         <button type="submit">検索</button>
       </form>
-      <a class="delivery-guide" href="index.html?flow=consult"><span>初めて配達をご希望の方</span><strong>配達相談について ›</strong></a>
+      <a class="delivery-guide" href="https://www.nano87.com/delivery/">定期配達をご希望の方はこちら</a>
       <section class="category-summary" aria-labelledby="products-title">
         <div><h1 id="products-title">${escapeHtml(word ? `「${word}」の検索結果` : selectedName)}</h1><p>${results.length}商品</p></div>
         <a class="category-change" href="index.html?open=categories">カテゴリー変更</a>
@@ -411,7 +476,7 @@
     </main>${categoryPanel(categories, activeCategory, listed.length)}${bottomNav(summary.itemCount)}`;
   }
 
-  function renderDetail(catalog, meta, code, cart = {}) {
+  function renderDetail(catalog, meta, code, cart = {}, galleryData = null, returnTarget = "") {
     const listed = listedProducts(catalog.products);
     const product = findProduct(listed, code);
     const summary = cartSummary(cart, catalog);
@@ -420,19 +485,24 @@
     }
     const category = categoryName(catalog.categories, product.SHOHINBUNRUICD);
     const description = safeDescription(product, decodeWarningProductCodes(catalog, meta));
+    const backHref = returnTarget === "e"
+      ? "category-comparison/e-horizontal-product-list.html"
+      : `index.html?gc_cd=${encodeURIComponent(text(product.SHOHINBUNRUICD))}`;
+    const backLabel = returnTarget === "e" ? "商品検索画面へ戻る" : `${category}へ戻る`;
     return `${header(summary.itemCount)}${cartLiveRegion()}<main id="main" class="detail-shell" tabindex="-1">
-      <a class="back-link" href="index.html?gc_cd=${encodeURIComponent(text(product.SHOHINBUNRUICD))}">← ${escapeHtml(category)}へ戻る</a>
+      <a class="back-link" data-detail-back href="${backHref}">← ${escapeHtml(backLabel)}</a>
       <article class="product-detail">
-        <div class="product-detail-image">${imageMarkup(product, true)}</div>
+        ${productGalleryMarkup(product, galleryData)}
         <div class="product-detail-copy">
-          <p class="detail-meta"><span>${escapeHtml(temperatureLabel(product.ONDOTAI))}</span> 商品コード ${escapeHtml(product.SHOHINCD)}</p>
+          <p class="detail-meta"><span data-temperature="${escapeHtml(product.ONDOTAI)}">${escapeHtml(temperatureLabel(product.ONDOTAI))}</span> 商品コード ${escapeHtml(product.SHOHINCD)}</p>
           <h1>${escapeHtml(product.SHOHINNM || `商品コード ${product.SHOHINCD}`)}</h1>
-          <p class="detail-spec">${escapeHtml(product.KIKAKUSETSUMEI) || "規格未設定"}</p>
+          <p class="detail-spec">${escapeHtml(stripPublicRadiationText(product.KIKAKUSETSUMEI)) || "規格未設定"}</p>
           <p class="detail-price">${priceLabel(product.BAIKA)}</p>
           <div class="detail-add" data-cart-hook="${escapeHtml(product.SHOHINCD)}">${cartControls(product, cart[text(product.SHOHINCD)] || 0)}</div>
           ${description.text ? `<section class="description${description.status === "warning" ? " is-warning" : ""}"><h2>商品について</h2><p>${escapeHtml(description.text)}</p></section>` : ""}
         </div>
       </article>
+      <a class="back-link detail-bottom-back" data-detail-back href="${backHref}">← 商品検索画面へ戻る</a>
     </main>${bottomNav(summary.itemCount)}`;
   }
 
@@ -445,7 +515,7 @@
       const code = escapeHtml(product.SHOHINCD);
       return `<article class="cart-line">
         <a class="cart-line-image" href="index.html?product=${encodeURIComponent(text(product.SHOHINCD))}">${imageMarkup(product, false)}</a>
-        <div class="cart-line-copy"><h2><a href="index.html?product=${encodeURIComponent(text(product.SHOHINCD))}">${escapeHtml(product.SHOHINNM)}</a></h2><p>${escapeHtml(product.KIKAKUSETSUMEI) || "規格未設定"}</p><p>単価 ${numberFormat.format(Number(product.BAIKA))}円</p></div>
+        <div class="cart-line-copy"><h2><a href="index.html?product=${encodeURIComponent(text(product.SHOHINCD))}">${escapeHtml(product.SHOHINNM)}</a></h2><p class="cart-line-temperature"><span data-temperature="${escapeHtml(product.ONDOTAI)}">${escapeHtml(temperatureLabel(product.ONDOTAI))}</span></p><p>${escapeHtml(stripPublicRadiationText(product.KIKAKUSETSUMEI)) || "規格未設定"}</p><p>単価 ${numberFormat.format(Number(product.BAIKA))}円</p></div>
         <div class="cart-line-controls">${cartControls(product, quantity)}<button class="remove-button" type="button" data-cart-action="remove" data-cart-code="${code}" data-cart-focus="${code}:remove">削除</button></div>
         <p class="line-subtotal">小計 <strong>${numberFormat.format(subtotal)}円</strong></p>
       </article>`;
@@ -685,6 +755,39 @@
     root.querySelectorAll("img").forEach((image) => image.addEventListener("error", () => handleImageError(image)));
   }
 
+  function bindProductGalleries(root = document) {
+    root.querySelectorAll("[data-gallery]").forEach((gallery) => {
+      const track = gallery.querySelector("[data-gallery-track]");
+      const slides = Array.from(gallery.querySelectorAll("[data-gallery-slide]"));
+      const buttons = Array.from(gallery.querySelectorAll("[data-gallery-index]"));
+      const position = gallery.querySelector("[data-gallery-position]");
+      if (!track || slides.length < 2 || buttons.length < slides.length || !position) return;
+      let frame = 0;
+      const select = (index) => {
+        const safeIndex = Math.max(0, Math.min(index, slides.length - 1));
+        position.textContent = `${safeIndex + 1} / ${slides.length}`;
+        buttons.forEach((button) => {
+          const current = Number(button.dataset.galleryIndex) === safeIndex;
+          button.classList.toggle("is-current", current);
+          button.setAttribute("aria-pressed", current ? "true" : "false");
+        });
+      };
+      track.addEventListener("scroll", () => {
+        if (frame) global.cancelAnimationFrame(frame);
+        frame = global.requestAnimationFrame(() => {
+          select(Math.round(track.scrollLeft / Math.max(track.clientWidth, 1)));
+          frame = 0;
+        });
+      }, { passive: true });
+      buttons.forEach((button) => button.addEventListener("click", () => {
+        const index = Number(button.dataset.galleryIndex);
+        const reduceMotion = global.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+        track.scrollTo({ left: index * track.clientWidth, behavior: reduceMotion ? "auto" : "smooth" });
+        select(index);
+      }));
+    });
+  }
+
   function announceCartChange(message) {
     const status = document.querySelector("#cart-status");
     if (!status) return;
@@ -731,6 +834,15 @@
       announceCartChange(nextQuantity > 0
         ? `${product.SHOHINNM}の数量を${nextQuantity}点に変更しました。カートは合計${summary.itemCount}点です。`
         : `${product.SHOHINNM}をカートから削除しました。カートは合計${summary.itemCount}点です。`);
+      if (current === 0 && nextQuantity > 0) {
+        document.querySelectorAll("[data-cart-controls]").forEach((controls) => {
+          if (controls.dataset.cartControls !== code) return;
+          const notice = controls.querySelector(".cart-added-notice");
+          if (!notice) return;
+          notice.textContent = "カートに\n追加しました";
+          global.setTimeout(() => { notice.textContent = ""; }, 3000);
+        });
+      }
     });
   }
 
@@ -781,10 +893,20 @@
     });
   }
 
-  const api = { MAX_CART_QUANTITY, PRODUCT_PAGE_SIZE, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, paginateProducts, catalogPageParams, paginationMarkup, snapshotMetadataMatches, decodeWarningProductCodes, safeDescription, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, handleImageError, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, categoryDrawerOrigin, escapeHtml };
+  const api = { MAX_CART_QUANTITY, PRODUCT_PAGE_SIZE, listedProducts, categoriesWithCounts, searchProducts, filterProducts, findProduct, categoryName, categoryNavigationParams, searchNavigationParams, paginateProducts, catalogPageParams, paginationMarkup, snapshotMetadataMatches, decodeWarningProductCodes, stripPublicRadiationText, safeDescription, productGalleryImages, productGalleryMarkup, cartStorageKey, resolveCartStorage, setCartQuantity, addCartItem, sanitizeCart, cartSummary, cartControls, cartFocusKey, productCard, handleImageError, header, bottomNav, renderCatalog, renderDetail, renderCart, flowRouteForCustomerType, nextFlowRoute, renderFlow, categoryDrawerOrigin, escapeHtml };
   global.NANOHANA_CATALOG_APP = api;
+  Object.assign(api, { cartLink, bindCartEvents, bindImageErrors, bindProductGalleries, loadCart, temperatureLabel });
 
-  if (typeof document !== "undefined") {
+  let activeSearchIndex = null;
+  let activeSnapshotId = null;
+
+  if (typeof document !== "undefined" && document.body.dataset.variant !== "e") {
+    const initialParams = new URLSearchParams(location.search);
+    const galleryRequest = initialParams.has("product")
+      ? fetch(`./data/product-images.php?product=${encodeURIComponent(initialParams.get("product"))}`, { cache: "no-store" })
+        .then((galleryResponse) => galleryResponse.ok ? galleryResponse.json() : null)
+        .catch(() => null)
+      : Promise.resolve(null);
     Promise.all([
       fetch("./data/catalog.json", { cache: "no-store" }).then((catalogResponse) => {
         if (!catalogResponse.ok) throw new Error("catalog load failed");
@@ -792,9 +914,11 @@
       }),
       fetch("./data/catalog-meta.json", { cache: "no-store" })
         .then((metaResponse) => metaResponse.ok ? metaResponse.json() : null)
-        .catch(() => null)
+        .catch(() => null),
+      galleryRequest
     ])
-      .then(([catalog, meta]) => {
+      .then(([catalog, meta, galleryData]) => {
+        activeSnapshotId = catalog.snapshot_id;
         const storageKey = cartStorageKey(catalog.snapshot_id);
         const storage = resolveCartStorage(global);
         let cart = loadCart(storage, storageKey, catalog);
@@ -805,9 +929,10 @@
             ? renderFlow(catalog, cart, params.get("flow"), flowState)
             : (params.has("cart")
               ? renderCart(catalog, cart)
-              : (params.has("product") ? renderDetail(catalog, meta, params.get("product"), cart) : renderCatalog(catalog, params, cart)));
+              : (params.has("product") ? renderDetail(catalog, meta, params.get("product"), cart, galleryData, params.get("return")) : renderCatalog(catalog, params, cart)));
           bindCatalogEvents();
           bindImageErrors();
+          bindProductGalleries();
           bindFlowEvents(renderPage);
           if (options.focusMain) {
             const main = document.querySelector("#main");
@@ -816,6 +941,13 @@
           }
         };
         renderPage();
+        fetch("./data/search-index.json", { cache: "no-store" })
+          .then((searchResponse) => searchResponse.ok ? searchResponse.json() : null)
+          .then((loadedSearchIndex) => {
+            activeSearchIndex = loadedSearchIndex;
+            if (new URLSearchParams(location.search).has("word")) renderPage();
+          })
+          .catch(() => null);
         bindCartEvents(catalog, cart, storage, storageKey);
         global.addEventListener("popstate", () => renderPage({ focusMain: true }));
       })

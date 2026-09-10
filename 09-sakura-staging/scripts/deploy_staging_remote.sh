@@ -9,9 +9,15 @@ MANIFEST='.deploy-manifest.tsv'
 PUBLIC_FILES='index.html
 manager-review.html
 assets/app.js
+assets/search.js
 assets/styles.css
 data/catalog.json
-data/catalog-meta.json'
+data/catalog-meta.json
+data/search-index.json
+data/product-images.php
+category-comparison/e-horizontal-product-list.html
+category-comparison/comparison.css
+category-comparison/comparison.js'
 
 TEST_ROOT=${NANOHANA_DEPLOY_TEST_ROOT:-}
 case "$TEST_ROOT" in
@@ -91,8 +97,30 @@ verify_manifest() {
   [ -f "$manifest_file" ] || die "remote manifest is missing"
   [ ! -L "$manifest_file" ] || die "remote manifest must not be a symlink"
   manifest_count=$(wc -l <"$manifest_file" | tr -d ' ')
+  manifest_layout=''
   case "$manifest_count:$policy" in
-    7:*) tree_count=9 ;;
+    12:*) tree_count=14; manifest_layout='rejected-bd' ;;
+    11:*)
+      manifest_line8=$(sed -n '8p' "$manifest_file" | cut -f1)
+      case "$manifest_line8:$policy" in
+        category-comparison/e-horizontal-product-list.html:*) manifest_layout='adopted-e' ;;
+        category-comparison/b-persistent-groups.html:legacy-ok) manifest_layout='legacy-b' ;;
+        *) die "remote manifest layout differs" ;;
+      esac
+      tree_count=13
+      ;;
+    14:*) tree_count=16; manifest_layout='current-customer-ui' ;;
+    15:*) tree_count=17 ;;
+    13:*)
+      manifest_line4=$(sed -n '4p' "$manifest_file" | cut -f1)
+      case "$manifest_line4:$policy" in
+        assets/search.js:*) manifest_layout='current-search'; tree_count=15 ;;
+        assets/styles.css:legacy-ok) manifest_layout='legacy-13'; tree_count=15 ;;
+        *) die "remote manifest layout differs" ;;
+      esac
+      ;;
+    10:legacy-ok) tree_count=12 ;;
+    7:legacy-ok) tree_count=9 ;;
     6:legacy-ok) tree_count=8 ;;
     *) die "remote manifest file count differs" ;;
   esac
@@ -103,10 +131,52 @@ verify_manifest() {
   line_no=0
   while IFS="$tab" read -r rel expected_size expected_sha extra; do
     line_no=$((line_no + 1))
-    case "$line_no:$rel" in
-      1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:.htaccess) ;;
-      *) die "remote manifest path or order differs" ;;
-    esac
+    if [ "$manifest_layout" = 'rejected-bd' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:data/product-images.php|8:category-comparison/b-persistent-groups.html|9:category-comparison/d-header-menu-all-products.html|10:category-comparison/comparison.css|11:category-comparison/comparison.js|12:.htaccess) ;;
+        *) die "remote manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_layout" = 'adopted-e' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:data/product-images.php|8:category-comparison/e-horizontal-product-list.html|9:category-comparison/comparison.css|10:category-comparison/comparison.js|11:.htaccess) ;;
+        *) die "remote manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_layout" = 'legacy-b' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:data/product-images.php|8:category-comparison/b-persistent-groups.html|9:category-comparison/comparison.css|10:category-comparison/comparison.js|11:.htaccess) ;;
+        *) die "remote legacy manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_layout" = 'current-search' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/search.js|5:assets/styles.css|6:data/catalog.json|7:data/catalog-meta.json|8:data/search-index.json|9:data/product-images.php|10:category-comparison/e-horizontal-product-list.html|11:category-comparison/comparison.css|12:category-comparison/comparison.js|13:.htaccess) ;;
+        *) die "remote current manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_layout" = 'current-customer-ui' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/customer-ui.css|5:assets/search.js|6:assets/styles.css|7:data/catalog.json|8:data/catalog-meta.json|9:data/search-index.json|10:data/product-images.php|11:category-comparison/e-horizontal-product-list.html|12:category-comparison/comparison.css|13:category-comparison/comparison.js|14:.htaccess) ;;
+        *) die "remote current customer UI manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_count" -eq 15 ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:assets/gallery-demo-package.svg|6:assets/gallery-demo-label.svg|7:assets/gallery-demo-contents.svg|8:assets/gallery-demo-serving.svg|9:data/catalog.json|10:data/catalog-meta.json|11:data/product-images.json|12:category-comparison/b-persistent-groups.html|13:category-comparison/comparison.css|14:category-comparison/comparison.js|15:.htaccess) ;;
+        *) die "remote manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_layout" = 'legacy-13' ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:assets/gallery-demo-package.svg|6:assets/gallery-demo-label.svg|7:data/catalog.json|8:data/catalog-meta.json|9:data/product-images.json|10:category-comparison/b-persistent-groups.html|11:category-comparison/comparison.css|12:category-comparison/comparison.js|13:.htaccess) ;;
+        *) die "remote legacy manifest path or order differs" ;;
+      esac
+    elif [ "$manifest_count" -eq 10 ]; then
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:assets/gallery-demo-package.svg|6:assets/gallery-demo-label.svg|7:data/catalog.json|8:data/catalog-meta.json|9:data/product-images.json|10:.htaccess) ;;
+        *) die "remote manifest path or order differs" ;;
+      esac
+    else
+      case "$line_no:$rel" in
+        1:index.html|2:manager-review.html|3:assets/app.js|4:assets/styles.css|5:data/catalog.json|6:data/catalog-meta.json|7:.htaccess) ;;
+        *) die "remote manifest path or order differs" ;;
+      esac
+    fi
     [ -z "${extra:-}" ] || die "remote manifest has an extra field"
     case "$expected_size" in ''|*[!0-9]*) die "remote manifest size is invalid" ;; esac
     case "$expected_sha" in
@@ -193,6 +263,22 @@ backup_fs=$(fs_path "$backup")
 lock_fs=$(fs_path "$lock")
 
 case "$operation" in
+  base-manifest)
+    lock_owned "$lock_fs" "$token" || die "deployment lock is not owned by this run"
+    [ -d "$target_fs" ] || die "existing target is missing"
+    [ ! -L "$target_fs" ] || die "existing target must not be a symlink"
+    verify_marker "$target_fs"
+    verify_manifest "$target_fs"
+    tab=$(printf '\t')
+    while IFS="$tab" read -r rel size sha extra; do
+      case "$rel" in
+        manager-review.html|data/catalog.json|data/catalog-meta.json|data/product-images.php|category-comparison/b-persistent-groups.html|category-comparison/d-header-menu-all-products.html|.htaccess)
+          printf '%s\t%s\t%s\n' "$rel" "$size" "$sha"
+          ;;
+      esac
+    done <"$target_fs/$MANIFEST"
+    ;;
+
   status)
     deployment_status
     ;;
@@ -222,7 +308,7 @@ case "$operation" in
     else
       mode=INITIAL
     fi
-    mkdir -p "$stage_fs/assets" "$stage_fs/data"
+    mkdir -p "$stage_fs/assets" "$stage_fs/data" "$stage_fs/category-comparison"
     prepare_ok=1
     trap - 0 HUP INT TERM
     echo "$mode"
@@ -236,10 +322,28 @@ case "$operation" in
         *) die "deployment state is UNKNOWN; automatic abort is unsafe" ;;
       esac
     fi
-    if [ ! -e "$target_fs" ] && [ -e "$backup_fs" ]; then
+    if [ -d "$target_fs" ] && [ ! -L "$target_fs" ] && [ -d "$backup_fs" ] && [ ! -L "$backup_fs" ]; then
+      if (verify_marker "$target_fs" "$token" && verify_manifest "$target_fs" current && verify_marker "$backup_fs" && verify_manifest "$backup_fs") >/dev/null 2>&1; then
+        [ ! -e "$stage_fs" ] || die "abort quarantine path already exists"
+        mv "$target_fs" "$stage_fs"
+        if ! mv "$backup_fs" "$target_fs"; then
+          mv "$stage_fs" "$target_fs" || true
+          die "failed to restore deployment backup during abort"
+        fi
+        verify_marker "$target_fs"
+        verify_manifest "$target_fs"
+        rm -rf "$stage_fs"
+      fi
+    elif [ ! -e "$target_fs" ] && [ -e "$backup_fs" ]; then
       if ! mv "$backup_fs" "$target_fs"; then
         echo "ロールバックにも失敗しました。退避先を残します: $backup" >&2
         exit 2
+      fi
+    elif [ -d "$target_fs" ] && [ ! -L "$target_fs" ] && [ ! -e "$backup_fs" ]; then
+      if (verify_marker "$target_fs" "$token" && verify_manifest "$target_fs" current) >/dev/null 2>&1; then
+        [ ! -e "$stage_fs" ] || die "abort quarantine path already exists"
+        mv "$target_fs" "$stage_fs"
+        rm -rf "$stage_fs"
       fi
     fi
     [ ! -e "$stage_fs" ] || rm -rf "$stage_fs"
@@ -296,8 +400,51 @@ case "$operation" in
     mv "$stage_fs" "$target_fs"
     target_moved=0
     finalize_ok=1
-    release_lock "$lock_fs" "$token"
     trap - 0 HUP INT TERM
+    ;;
+
+  commit)
+    lock_owned "$lock_fs" "$token" || die "deployment lock is not owned by this run"
+    [ -d "$target_fs" ] && [ ! -L "$target_fs" ] || die "deployed target is invalid"
+    verify_marker "$target_fs" "$token"
+    verify_manifest "$target_fs" current
+    [ ! -e "$stage_fs" ] || die "committed deployment left a stage directory"
+    release_lock "$lock_fs" "$token"
+    ;;
+
+  rollback)
+    lock_owned "$lock_fs" "$token" || die "deployment lock is not owned by this run"
+    rollback_ok=0
+    rollback_cleanup() {
+      rc=$?
+      if [ "$rollback_ok" -ne 1 ] && [ ! -e "$target_fs" ] && [ -e "$stage_fs" ]; then
+        mv "$stage_fs" "$target_fs" || true
+      fi
+      if [ "$rollback_ok" -eq 1 ]; then
+        release_lock "$lock_fs" "$token" || true
+      fi
+      return "$rc"
+    }
+    trap rollback_cleanup 0
+    [ -d "$target_fs" ] && [ ! -L "$target_fs" ] || die "deployed target is invalid"
+    verify_marker "$target_fs" "$token"
+    verify_manifest "$target_fs" current
+    [ -d "$backup_fs" ] && [ ! -L "$backup_fs" ] || die "rollback backup is missing"
+    verify_marker "$backup_fs"
+    verify_manifest "$backup_fs"
+    [ ! -e "$stage_fs" ] || die "rollback quarantine path already exists"
+    mv "$target_fs" "$stage_fs"
+    if ! mv "$backup_fs" "$target_fs"; then
+      mv "$stage_fs" "$target_fs" || true
+      die "failed to restore rollback backup"
+    fi
+    verify_marker "$target_fs"
+    verify_manifest "$target_fs"
+    rm -rf "$stage_fs"
+    rollback_ok=1
+    release_lock "$lock_fs" "$token"
+    trap - 0
+    echo ALREADY_ROLLED_BACK
     ;;
 
   *) die "unknown remote operation" ;;

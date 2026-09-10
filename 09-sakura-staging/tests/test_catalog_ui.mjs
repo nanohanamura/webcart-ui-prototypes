@@ -6,6 +6,7 @@ import vm from "node:vm";
 const root = new URL("../", import.meta.url);
 const catalog = JSON.parse(fs.readFileSync(new URL("data/catalog.json", root), "utf8"));
 const catalogMeta = JSON.parse(fs.readFileSync(new URL("data/catalog-meta.json", root), "utf8"));
+const productImages = JSON.parse(fs.readFileSync(new URL("data/product-images.json", root), "utf8"));
 
 function loadHelpers() {
   const source = fs.readFileSync(new URL("assets/app.js", root), "utf8");
@@ -19,13 +20,109 @@ test("page skeleton and local snapshot loader exist", () => {
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
   assert.match(html, /id="app"/);
-  assert.match(html, /assets\/app\.js/);
-  assert.match(html, /assets\/styles\.css/);
+  assert.match(html, /assets\/search\.js\?v=20260905-search1/);
+  assert.match(html, /assets\/app\.js\?v=20260911-ui1/);
+  assert.match(html, /assets\/styles\.css\?v=20260824-purchase1/);
   assert.match(html, /<a class="skip-link" href="#main">メインコンテンツへ移動<\/a>/);
   const { source } = loadHelpers();
   assert.match(source, /fetch\("\.\/data\/catalog\.json"/);
   assert.match(source, /fetch\("\.\/data\/catalog-meta\.json"/);
+  assert.match(source, /product-images\.php\?product=/);
+  assert.match(source, /encodeURIComponent\(initialParams\.get\("product"\)\)/);
   assert.doesNotMatch(source, /fetch\(["']https?:/);
+});
+
+test("public catalog and every customer-facing renderer omit radiation wording", () => {
+  const { api } = loadHelpers();
+  const forbidden = /放射性セシウム|セシウム|放射能|cesium/i;
+  assert.doesNotMatch(JSON.stringify(catalog), forbidden);
+  assert.equal(catalogMeta.radiation_text_removed_field_count, 346);
+
+  const fixture = {
+    SHOHINCD: 900001, SHOHINNM: "表示確認商品", BAIKA: 500,
+    SHOHINBUNRUICD: 44, NARABIJUN: 1, HAIKEISHOKUCD: 0,
+    ONDOTAI: 0, CHUMOKUCD: 0, CHOKUSOKBN: 0, DELFLG: 0,
+    SHOSAISETSUMEI: "説明。放射性セシウム検査対象地域外。セシウムについての旧案内。",
+    KIKAKUSETSUMEI: "200g、●放射性セシウム不検出（検出限界10ベクレル）",
+    GAZOFILENM: "", HYOUJIKIGEN: null, INSDT: null, UPDDT: null,
+    image_url: null, thumbnail_url: null
+  };
+  const fixtureCatalog = { products: [fixture], categories: [], snapshot_id: catalog.snapshot_id };
+  assert.doesNotMatch(api.productCard(fixture), forbidden);
+  assert.doesNotMatch(api.renderCatalog(fixtureCatalog, new URLSearchParams(), {}), forbidden);
+  assert.doesNotMatch(api.renderDetail(fixtureCatalog, null, "900001", {}, null), forbidden);
+  assert.doesNotMatch(api.renderCart(fixtureCatalog, { "900001": 1 }), forbidden);
+  const flowState = {
+    customerType: "new-general",
+    orderer: { name: "試作", email: "sample@example.invalid", postal: "000", address: "試作", phone: "000" },
+    delivery: { separate: false }
+  };
+  for (const route of ["entry", "orderer", "delivery", "confirm", "complete"]) {
+    assert.doesNotMatch(api.renderFlow(fixtureCatalog, { "900001": 1 }, route, flowState), forbidden, route);
+  }
+  assert.equal(api.searchProducts([fixture], "セシウム").length, 0);
+});
+
+test("one prototype product shows representative plus four additional images only on detail", () => {
+  const { api } = loadHelpers();
+  const code = String(productImages.products[0].SHOHINCD);
+  const product = api.findProduct(catalog.products, code);
+  assert.ok(product);
+  const detail = api.renderDetail(catalog, catalogMeta, code, {}, productImages);
+  const card = api.productCard(product, {});
+
+  assert.equal(productImages.products[0].images.length, 4);
+  assert.equal((detail.match(/class="gallery-slide"/g) || []).length, 5);
+  assert.match(detail, /data-gallery-track/);
+  assert.match(detail, /data-gallery-position[^>]*>1 \/ 5</);
+  assert.equal((detail.match(/class="gallery-dot is-current"/g) || []).length, 1);
+  assert.equal((detail.match(/<button class="gallery-dot/g) || []).length, 5);
+  assert.equal((detail.match(/<button class="gallery-thumbnail/g) || []).length, 5);
+  assert.equal((detail.match(/data-gallery-index=/g) || []).length, 10);
+  assert.doesNotMatch(detail, /画面構成を確認するための表示例/);
+  assert.doesNotMatch(card, /product-gallery|gallery-slide|data-gallery/);
+});
+
+test("the staging deployment publishes the live gallery endpoint instead of demo gallery data", () => {
+  const deploy = fs.readFileSync(new URL("scripts/deploy_staging.sh", root), "utf8");
+  const remote = fs.readFileSync(new URL("scripts/deploy_staging_remote.sh", root), "utf8");
+  for (const source of [deploy, remote]) {
+    assert.match(source, /^data\/product-images\.php$/m);
+    assert.doesNotMatch(source, /^data\/product-images\.json$/m);
+    assert.doesNotMatch(source, /^assets\/gallery-demo-/m);
+  }
+});
+
+test("one-image product detail shows one small position dot without unnecessary swipe controls", () => {
+  const { api } = loadHelpers();
+  const product = catalog.products.find((item) => item.image_url && String(item.SHOHINCD) !== String(productImages.products[0].SHOHINCD));
+  assert.ok(product);
+  const detail = api.renderDetail(catalog, catalogMeta, String(product.SHOHINCD), {}, productImages);
+  assert.match(detail, /class="product-detail-image"/);
+  assert.match(detail, /class="gallery-dots is-single"/);
+  assert.match(detail, /class="gallery-dot-static is-current"/);
+  assert.doesNotMatch(detail, /data-gallery-track|data-gallery-position|data-gallery-index/);
+});
+
+test("gallery is mobile swipeable, keyboard reachable and reserves stable image space", () => {
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  assert.match(css, /\.gallery-track\s*\{[^}]*display:\s*flex[^}]*overflow-x:\s*auto[^}]*scroll-snap-type:\s*x mandatory/s);
+  assert.match(css, /\.gallery-slide\s*\{[^}]*min-width:\s*100%[^}]*scroll-snap-align:\s*start/s);
+  assert.match(css, /\.gallery-thumbnail\s*\{[^}]*min-width:\s*44px[^}]*min-height:\s*44px/s);
+  assert.match(css, /\.gallery-dot\s*\{[^}]*width:\s*44px[^}]*height:\s*44px/s);
+  assert.match(css, /\.gallery-dot::before\s*\{[^}]*width:\s*8px[^}]*height:\s*8px[^}]*border-radius:\s*50%/s);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/s);
+});
+
+test("product detail image area is centered at eighty percent and has a lower return link", () => {
+  const { api } = loadHelpers();
+  const css = fs.readFileSync(new URL("assets/styles.css", root), "utf8");
+  const product = catalog.products.find((item) => item.image_url);
+  assert.ok(product);
+  const detail = api.renderDetail(catalog, catalogMeta, String(product.SHOHINCD), {}, null, "e");
+  assert.equal((detail.match(/data-detail-back/g) || []).length, 2);
+  assert.match(detail, /href="category-comparison\/e-horizontal-product-list\.html"[^>]*>← 商品検索画面へ戻る</);
+  assert.match(css, /\.product-detail-image,\.product-gallery\s*\{[^}]*width:\s*80%[^}]*margin-inline:\s*auto/s);
 });
 
 test("category and search navigation remove the one-shot drawer parameter", () => {
@@ -164,12 +261,12 @@ test("mobile pagination wraps controls into two rows instead of overflowing", ()
   assert.match(css, /@media\s*\(min-width:\s*800px\)[\s\S]*\.pagination-controls\s*\{[^}]*display:\s*flex/s);
 });
 
-test("both category entry points use the same URL-opened drawer route", () => {
+test("legacy catalog retains its drawer while customer navigation returns to adopted E categories", () => {
   const { api } = loadHelpers();
   const html = api.renderCatalog(catalog, new URLSearchParams(), {});
   const nav = api.bottomNav(0);
   assert.match(html, /class="category-change" href="index\.html\?open=categories"/);
-  assert.match(nav, /href="index\.html\?open=categories"/);
+  assert.match(nav, /href="category-comparison\/e-horizontal-product-list\.html#categories"/);
   assert.doesNotMatch(html, /<button[^>]*data-open-categories/);
 });
 
@@ -358,10 +455,11 @@ test("search anchor clears the sticky header when scrolled into view", () => {
   assert.match(css, /#word,\.search-form\s*\{[^}]*scroll-margin-top:\s*(?:9[0-9]|[1-9][0-9]{2,})px/s);
 });
 
-test("catalog and prototype cart have no order, login, database, NILE, CSV, mail, or external write connection", () => {
+test("catalog has only the fixed read-only gallery endpoint and no order, mail, or external write connection", () => {
   const html = fs.readFileSync(new URL("index.html", root), "utf8");
   const { source } = loadHelpers();
   const combined = `${html}\n${source}`;
-  assert.doesNotMatch(combined, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|<form[^>]+action=/i);
+  assert.equal((combined.match(/\.\/data\/product-images\.php\?product=/g) || []).length, 1);
+  assert.doesNotMatch(combined.replace("./data/product-images.php?product=", ""), /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|<form[^>]+action=/i);
   assert.doesNotMatch(combined, /sessionStorage/);
 });

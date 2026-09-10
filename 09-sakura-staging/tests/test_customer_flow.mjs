@@ -194,8 +194,9 @@ test("flow forms are prevented, use page-memory state, and add no external write
   assert.match(source, /history\.pushState/);
   assert.doesNotMatch(source, /sessionStorage|document\.cookie/);
   assert.doesNotMatch(source, /flowState[\s\S]{0,120}(?:localStorage|saveCart)|(?:localStorage|saveCart)[\s\S]{0,120}flowState/);
-  assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|href=["']tel:/i);
-  assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/catalog(?:-meta)?\.json)/);
+  assert.equal((source.match(/\.\/data\/product-images\.php\?product=/g) || []).length, 1);
+  assert.doesNotMatch(source.replace("./data/product-images.php?product=", ""), /XMLHttpRequest|sendBeacon|WebSocket|\.php\b|NILE|Chumon|\.csv\b|mailto:|href=["']tel:/i);
+  assert.doesNotMatch(source, /fetch\((?!["']\.\/data\/(?:catalog(?:-meta)?|search-index)\.json|`\.\/data\/product-images\.php\?product=)/);
   assert.doesNotMatch(source, /<form[^>]+action=/i);
 });
 

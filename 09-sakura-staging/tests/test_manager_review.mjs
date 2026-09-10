@@ -14,6 +14,7 @@ test("manager review page is a noindex prototype and returns to the shopping top
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/);
   assert.match(html, /店長確認用の試作です。実際の注文・ログイン・送信は行いません。/);
   assert.match(html, /<h1>店長確認表<\/h1>/);
+  assert.match(html, /assets\/styles\.css\?v=20260824-purchase1/);
   assert.match(html, /href="index\.html"/);
   assert.doesNotMatch(html, /<form\b|<input\b[^>]*type=["'](?:text|email|tel|password)|<textarea\b|contenteditable/i, "the public checklist must not collect personal notes");
   assert.equal((html.match(/type="checkbox"/g) || []).length, 12);
@@ -60,11 +61,12 @@ test("public prototype has no write, production-order, mail, CSV, NILE, or payme
   assert.doesNotMatch(combined, /XMLHttpRequest|sendBeacon|WebSocket/i);
   assert.doesNotMatch(combined, /<form[^>]+action\s*=|formaction\s*=/i);
   assert.doesNotMatch(combined, /(?:href|src)\s*=\s*["'](?:mailto:|tel:)/i);
-  assert.doesNotMatch(combined, /\.php\b|NILE|Chumon(?:sha|List)?|\.csv\b/i);
+  assert.equal((combined.match(/\.\/data\/product-images\.php\?product=/g) || []).length, 1);
+  assert.doesNotMatch(combined.replace("./data/product-images.php?product=", ""), /\.php\b|NILE|Chumon(?:sha|List)?|\.csv\b/i);
   assert.doesNotMatch(combined, /Stripe|PayPal|Square|KOMOJU|PAY\.JP|GMO|SBペイメント/i);
 
   const fetchCalls = [...combined.matchAll(/fetch\(\s*["']([^"']+)["']/g)].map((match) => match[1]);
-  assert.deepEqual(fetchCalls.sort(), ["./data/catalog-meta.json", "./data/catalog.json"]);
+  assert.deepEqual(fetchCalls.sort(), ["./data/catalog-meta.json", "./data/catalog.json", "./data/search-index.json"]);
 });
 
 test("manager review layout is readable on narrow and wide screens", () => {

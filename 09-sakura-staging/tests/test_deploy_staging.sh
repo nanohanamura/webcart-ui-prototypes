@@ -6,9 +6,16 @@ SCRIPT="$ROOT/scripts/deploy_staging.sh"
 EXPECTED='index.html
 manager-review.html
 assets/app.js
+assets/customer-ui.css
+assets/search.js
 assets/styles.css
 data/catalog.json
-data/catalog-meta.json'
+data/catalog-meta.json
+data/search-index.json
+data/product-images.php
+category-comparison/e-horizontal-product-list.html
+category-comparison/comparison.css
+category-comparison/comparison.js'
 
 fail() {
   echo "FAIL: $*" >&2
@@ -27,13 +34,15 @@ grep -F 'Deny from all' "$HTACCESS" >/dev/null || fail "Apache 2.2 deny fallback
 dry_output=$("$SCRIPT" --dry-run)
 printf '%s\n' "$dry_output" | grep -F 'https://staging.nano87.com/webcart-prototype/' >/dev/null || fail "URL is not shown"
 printf '%s\n' "$dry_output" | grep -F '/home/nano87/www/staging/webcart-prototype' >/dev/null || fail "target is not shown"
-printf '%s\n' "$dry_output" | grep -F '公開ファイル数: 6' >/dev/null || fail "file count is not six"
-printf '%s\n' "$dry_output" | grep -F '配置構成: 公開アプリ6 + サーバー保護設定1 + 非公開管理2' >/dev/null || fail "protected deployment composition is not shown"
-printf '%s\n' "$dry_output" | grep -F 'ローカルmanifest: path / size / sha256 を7件生成・確認済み' >/dev/null || fail "manifest is not confirmed"
+printf '%s\n' "$dry_output" | grep -F '公開ファイル数: 13' >/dev/null || fail "file count is not thirteen"
+printf '%s\n' "$dry_output" | grep -F '配置構成: 公開アプリ13 + サーバー保護設定1 + 非公開管理2' >/dev/null || fail "protected deployment composition is not shown"
+printf '%s\n' "$dry_output" | grep -F 'ローカルmanifest: path / size / sha256 を14件生成・確認済み' >/dev/null || fail "manifest is not confirmed"
 printf '%s\n' "$dry_output" | grep -F '復元:' >/dev/null || fail "rollback is not shown"
 
 actual=$(printf '%s\n' "$dry_output" | sed -n 's/^  - //p')
 [ "$actual" = "$EXPECTED" ] || fail "public whitelist differs"
+printf '%s\n' "$actual" | grep -F 'image-manager' >/dev/null && fail "image management prototype entered public whitelist"
+printf '%s\n' "$actual" | grep -E 'category-comparison/(index|a-drawer-accordion|c-two-pane-drawer)[.]html' >/dev/null && fail "unapproved category comparison page entered public whitelist"
 
 static=$(cat "$SCRIPT")
 remote_static=$(cat "$ROOT/scripts/deploy_staging_remote.sh")
@@ -53,6 +62,13 @@ cat >"$mock_dir/ssh" <<'MOCK'
 cat >/dev/null
 printf 'ssh:%s\n' "$*" >>"$DEPLOY_TEST_LOG"
 case "$*" in
+  *' -- base-manifest '*)
+    for rel in manager-review.html data/catalog.json data/catalog-meta.json data/product-images.php .htaccess; do
+      size=$(stat -f '%z' "$DEPLOY_TEST_ROOT/$rel" 2>/dev/null || stat -c '%s' "$DEPLOY_TEST_ROOT/$rel")
+      sha=$(shasum -a 256 "$DEPLOY_TEST_ROOT/$rel" | awk '{print $1}')
+      printf '%s\t%s\t%s\n' "$rel" "$size" "$sha"
+    done
+    ;;
   *' -- status '*) printf '%s\n' "${DEPLOY_TEST_STATUS:-ACTIVE}" ;;
   *' -- finalize '*) [ "${DEPLOY_TEST_FAIL_FINALIZE:-0}" != 1 ] || exit 10 ;;
 esac
@@ -69,27 +85,66 @@ if [ "${DEPLOY_TEST_FAIL_SCP_AT:-0}" -eq "$count" ]; then
   exit 9
 fi
 MOCK
-chmod +x "$mock_dir/ssh" "$mock_dir/scp"
+cat >"$mock_dir/curl" <<'MOCK'
+#!/bin/sh
+if [ "${DEPLOY_TEST_HTTP_FAIL:-0}" = 1 ]; then
+  printf 500
+  exit 0
+fi
+if [ -n "${DEPLOY_TEST_HTTP_FAIL_MATCH:-}" ]; then
+  case "$*" in
+    *"$DEPLOY_TEST_HTTP_FAIL_MATCH"*) printf 500; exit 0 ;;
+  esac
+fi
+case "$*" in
+  *category-comparison/index.html*|*a-drawer-accordion.html*|*b-persistent-groups.html*|*c-two-pane-drawer.html*|*d-header-menu-all-products.html*|*image-manager.html*) printf 404 ;;
+  *.deploy-manifest.tsv*) printf 403 ;;
+  *) printf 200 ;;
+esac
+MOCK
+chmod +x "$mock_dir/ssh" "$mock_dir/scp" "$mock_dir/curl"
 
-DEPLOY_TEST_LOG="$log" PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null
+DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null
 
-[ "$(grep -c '^ssh:' "$log")" -eq 2 ] || fail "successful execute must use prepare and finalize remote phases"
-[ "$(grep -c '^scp:' "$log")" -eq 9 ] || fail "execute must upload six public, one protection and two management files"
+[ "$(grep -c '^ssh:' "$log")" -eq 4 ] || fail "successful execute must prepare, verify base, finalize and commit"
+grep -F ' -- commit ' "$log" >/dev/null || fail "successful execute did not release the lock through commit"
+[ "$(grep -c '^scp:' "$log")" -eq 16 ] || fail "execute must upload thirteen public, one protection and two management files"
 if grep -E '(\.env|tests/|scripts/|docs/|07-|08-|\.DS_Store)' "$log" >/dev/null; then
   fail "forbidden path reached upload commands"
 fi
 
 : >"$log"
 rm -f "$log.scp-count"
-if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_SCP_AT=3 PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null 2>&1; then
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_HTTP_FAIL=1 PATH="$mock_dir:$PATH" \
+  "$SCRIPT" --execute >"$mock_dir/http-fail.out" 2>"$mock_dir/http-fail.err"; then
+  fail "failed publication verification unexpectedly returned success"
+fi
+[ "$(grep -c '^ssh:' "$log")" -eq 4 ] || fail "HTTP failure must prepare, verify base, finalize and rollback without commit"
+grep -F ' -- commit ' "$log" >/dev/null && fail "HTTP failure must not commit the deployment"
+grep -F ' -- rollback ' "$log" >/dev/null || fail "HTTP failure did not call post-commit rollback"
+grep -F '直前版へ戻します' "$mock_dir/http-fail.err" >/dev/null || fail "HTTP rollback was not explained"
+
+: >"$log"
+rm -f "$log.scp-count"
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_HTTP_FAIL_MATCH='comparison.js' PATH="$mock_dir:$PATH" \
+  "$SCRIPT" --execute >"$mock_dir/http-single-fail.out" 2>"$mock_dir/http-single-fail.err"; then
+  fail "a single failed publication check was masked by later successes"
+fi
+grep -F ' -- commit ' "$log" >/dev/null && fail "a single failed publication check must not commit the deployment"
+grep -F ' -- rollback ' "$log" >/dev/null || fail "a single failed publication check did not roll back"
+grep -F 'comparison.js' "$mock_dir/http-single-fail.err" >/dev/null || fail "the failed publication URL was not reported"
+
+: >"$log"
+rm -f "$log.scp-count"
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_SCP_AT=3 PATH="$mock_dir:$PATH" "$SCRIPT" --execute >/dev/null 2>&1; then
   fail "partial scp failure was accepted"
 fi
-[ "$(grep -c '^ssh:' "$log")" -eq 3 ] || fail "partial scp must call prepare, status and abort"
+[ "$(grep -c '^ssh:' "$log")" -eq 4 ] || fail "partial scp must verify base, prepare, status and abort"
 [ "$(grep -c '^scp:' "$log")" -eq 3 ] || fail "partial scp failure did not stop immediately"
 
 : >"$log"
 rm -f "$log.scp-count"
-if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=ALREADY_ROLLED_BACK PATH="$mock_dir:$PATH" \
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=ALREADY_ROLLED_BACK PATH="$mock_dir:$PATH" \
   "$SCRIPT" --execute >"$mock_dir/rolled.out" 2>"$mock_dir/rolled.err"; then
   fail "uncertain finalize unexpectedly returned success"
 fi
@@ -99,7 +154,7 @@ fi
 
 : >"$log"
 rm -f "$log.scp-count"
-if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=COMMITTED PATH="$mock_dir:$PATH" \
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=COMMITTED PATH="$mock_dir:$PATH" \
   "$SCRIPT" --execute >"$mock_dir/committed.out" 2>"$mock_dir/committed.err"; then
   fail "uncertain committed finalize unexpectedly returned success"
 fi
@@ -109,7 +164,7 @@ fi
 
 : >"$log"
 rm -f "$log.scp-count"
-if DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=UNKNOWN PATH="$mock_dir:$PATH" \
+if DEPLOY_TEST_ROOT="$ROOT" DEPLOY_TEST_LOG="$log" DEPLOY_TEST_FAIL_FINALIZE=1 DEPLOY_TEST_STATUS=UNKNOWN PATH="$mock_dir:$PATH" \
   "$SCRIPT" --execute >"$mock_dir/unknown.out" 2>"$mock_dir/unknown.err"; then
   fail "unknown finalize unexpectedly returned success"
 fi

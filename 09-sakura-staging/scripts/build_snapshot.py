@@ -52,6 +52,19 @@ DECODE_WARNING_PATTERN = re.compile(
 ALLOWED_DECODE_WARNING_FIELDS = frozenset(
     ("SHOSAISETSUMEI", "KIKAKUSETSUMEI")
 )
+PUBLIC_RADIATION_PATTERNS = (
+    re.compile(
+        r"[ \t　]*(?:、[ \t　]*)?[●・]?[ \t　]*"
+        r"放射性セシウム不検出[ \t　]*[（(][^）)\r\n]*ベクレル[^）)\r\n]*[）)]"
+    ),
+    re.compile(
+        r"[ \t　]*(?:、[ \t　]*)?[●・]?[ \t　]*"
+        r"放射性セシウム検査対象地域外"
+    ),
+    re.compile(r"[^。\r\n]*放射能[^。\r\n]*。?", re.IGNORECASE),
+    re.compile(r"[^。\r\n]*セシウム[^。\r\n]*。?", re.IGNORECASE),
+    re.compile(r"[^。\r\n]*cesium[^。\r\n]*。?", re.IGNORECASE),
+)
 
 
 class SnapshotValidationError(ValueError):
@@ -142,6 +155,21 @@ def _image_urls(filename):
         PUBLIC_IMAGE_BASE + "/" + encoded,
         PUBLIC_IMAGE_BASE + "/thum/" + thumb,
     )
+
+
+def strip_public_radiation_text(value):
+    """Remove retired radiation wording only from the derived public text."""
+    if value is None or value == "":
+        return value
+    cleaned = value
+    for pattern in PUBLIC_RADIATION_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+    if cleaned == value:
+        return value
+    cleaned = re.sub(r"、[ \t　]*、", "、", cleaned)
+    cleaned = re.sub(r"\A[ \t　]*、[ \t　]*", "", cleaned)
+    cleaned = re.sub(r"[ \t　]*、[ \t　]*\Z", "", cleaned)
+    return cleaned.strip(" \t　")
 
 
 def validate_payload(payload):
@@ -333,12 +361,18 @@ def build_snapshot(payload, output_dir):
         if warning["product_code"] in listed_codes
     ]
     products = []
+    radiation_text_removed_field_count = 0
     ordered_products = sorted(
         (item for item in source_products if item["DELFLG"] == 0),
         key=lambda row: (row["NARABIJUN"], row["SHOHINCD"]),
     )
     for source in ordered_products:
         item = dict(source)
+        for field in ("SHOSAISETSUMEI", "KIKAKUSETSUMEI"):
+            cleaned = strip_public_radiation_text(item[field])
+            if cleaned != item[field]:
+                radiation_text_removed_field_count += 1
+                item[field] = cleaned
         item["image_url"], item["thumbnail_url"] = _image_urls(item["GAZOFILENM"])
         products.append(item)
     index_by_code = {
@@ -392,6 +426,7 @@ def build_snapshot(payload, output_dir):
             1 for item in source_products if item["DELFLG"] != 0
         ),
         "visibility_contract": "Public catalog contains only products where DELFLG == 0",
+        "radiation_text_removed_field_count": radiation_text_removed_field_count,
         "decode_warning_count": len(decode_warning_products),
         "decode_warnings": [
             "products[%d].%s" % (index_by_code[warning["product_code"]], warning["field"])
@@ -440,7 +475,15 @@ def main(argv=None):
         else:
             payload = json.load(sys.stdin)
         build_snapshot(payload, args.output_dir)
-    except (OSError, json.JSONDecodeError, SnapshotValidationError) as error:
+        import search_index
+        root = Path(__file__).resolve().parents[1]
+        search_index.build_from_catalog(
+            args.output_dir / "catalog.json",
+            root / "data" / "search-synonyms.json",
+            args.output_dir / "search-index.json",
+            root / "reports" / "search-reading-review.json",
+        )
+    except (OSError, RuntimeError, json.JSONDecodeError, SnapshotValidationError) as error:
         print("snapshot build failed: %s" % error, file=sys.stderr)
         return 1
     return 0
